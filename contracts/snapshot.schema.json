@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["cycle_index", "timestamp", "curves", "scalars", "health", "rul", "quality"],
+  "properties": {
+    "cycle_index": { "type": "integer" },
+    "timestamp":   { "type": "string", "format": "date-time" },
+    "curves":      { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "number" } } },
+    "scalars":     { "type": "object", "additionalProperties": { "type": "number" } },
+    "health": {
+      "type": "object",
+      "description": "Per-component health in [0,1]. Estimated from observable signals, NOT read from FSM.",
+      "properties": {
+        "hydraulic":        { "type": "number", "minimum": 0, "maximum": 1 },
+        "screw_check_ring": { "type": "number", "minimum": 0, "maximum": 1 },
+        "heaters":          { "type": "number", "minimum": 0, "maximum": 1 },
+        "drive":            { "type": "number", "minimum": 0, "maximum": 1 },
+        "mold":             { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": ["hydraulic", "screw_check_ring", "heaters", "drive", "mold"]
+    },
+    "rul": {
+      "type": "object",
+      "required": ["component", "cycles_remaining", "ci_low", "ci_high"],
+      "properties": {
+        "component":        { "type": "string" },
+        "cycles_remaining": { "type": "number" },
+        "ci_low":           { "type": "number" },
+        "ci_high":          { "type": "number" },
+        "optimal_replace_low":  { "type": "number", "description": "Lower bound of resale-value replacement window" },
+        "optimal_replace_high": { "type": "number", "description": "Upper bound of resale-value replacement window" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "required": ["label", "proba"],
+      "properties": {
+        "label": { "type": "string", "enum": ["good", "acceptable", "waste"] },
+        "proba": {
+          "type": "object",
+          "properties": {
+            "good":       { "type": "number" },
+            "acceptable": { "type": "number" },
+            "waste":      { "type": "number" }
+          },
+          "required": ["good", "acceptable", "waste"]
+        }
+      }
+    },
+    "speedup":       { "type": "number", "minimum": 1 },
+    "active_faults": { "type": "array", "items": { "type": "string" } }
+  }
+}

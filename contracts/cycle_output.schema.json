@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["cycle_index", "timestamp", "machine_id", "curves", "scalars", "hold_profile", "barrel_temps"],
+  "additionalProperties": false,
+  "properties": {
+    "cycle_index":   { "type": "integer", "minimum": 0 },
+    "timestamp":     { "type": "string", "format": "date-time" },
+    "machine_id":    { "type": "string" },
+    "curves": {
+      "type": "object",
+      "description": "Per-tick arrays sampled within the cycle. Same length across keys.",
+      "additionalProperties": { "type": "array", "items": { "type": "number" } }
+    },
+    "scalars":      { "type": "object", "additionalProperties": { "type": "number" } },
+    "hold_profile": { "type": "array", "items": { "type": "number" }, "minItems": 10, "maxItems": 10 },
+    "barrel_temps": { "type": "array", "items": { "type": "number" }, "minItems": 6,  "maxItems": 6  }
+  }
+}

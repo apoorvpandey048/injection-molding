@@ -1,0 +1,39 @@
+/**
+ * Design tokens — single source of truth for the IMM dashboard palette.
+ * Dark mode only (industrial monitoring product). Use via Tailwind arbitrary
+ * values, e.g. bg-[var(--color-surface)] text-[var(--color-text-secondary)].
+ *
+ * The shadcn HSL variables in index.css are kept in sync with these so the
+ * shadcn primitives (Card/Button/Dialog/Badge) match the rest of the UI.
+ */
+:root {
+  /* ── base surfaces — deep slate-blue ─────────────────────────────── */
+  --color-bg:               #0a0e16; /* app background */
+  --color-surface:          #121826; /* cards / panels */
+  --color-surface-elevated: #1b2433; /* raised: header, dialogs, popovers, hover */
+  --color-border:           #263043; /* hairline borders */
+
+  /* ── text ────────────────────────────────────────────────────────── */
+  --color-text-primary:     #e8edf4; /* headings, key numbers */
+  --color-text-secondary:   #9babc4; /* body, labels */
+  --color-text-muted:       #5f6e87; /* captions, axis ticks */
+
+  /* ── accent — interactive chrome (focus, primary buttons, active) ── */
+  --color-accent:           #38bdf8; /* sky-400 */
+  --color-accent-hover:     #0ea5e9; /* sky-500 */
+
+  /* ── semantic status ─────────────────────────────────────────────── */
+  --color-success:          #34d399; /* healthy / good quality / monitor */
+  --color-warning:          #fbbf24; /* attention / acceptable */
+  --color-critical:         #f4554e; /* urgent / waste */
+  --color-failed:           #8a7374; /* desaturated grey-red — STOPPED (distinct from critical) */
+
+  /* ── urgency bands (gauges) ──────────────────────────────────────── */
+  --color-urgency-critical: #f4554e;
+  --color-urgency-imminent: #fbbf24;
+  --color-urgency-schedule: #38bdf8;
+  --color-urgency-monitor:  #34d399;
+
+  /* chart ink */
+  --color-grid:             #1e2939;
+}

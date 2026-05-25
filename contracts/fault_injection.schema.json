@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["fault", "severity"],
+  "properties": {
+    "fault":        { "type": "string", "enum": ["check_ring_wear", "heater_drift", "hydraulic_pump_wear"] },
+    "severity":     { "type": "number", "minimum": 0, "maximum": 1, "default": 0.6 },
+    "onset_cycles": { "type": "integer", "minimum": 1, "default": 20 }
+  }
+}

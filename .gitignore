@@ -1,0 +1,42 @@
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# --- node ---
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# --- data / artifacts ---
+data/
+ml/datasets/
+*.parquet
+*.h5
+mlruns/
+artifacts/
+
+# --- tunnel (cloudflared quick tunnel for remote demos) ---
+/bin/
+cloudflared.log
+
+# --- heavy / non-essential (not needed to clone & run; regenerated or local-only) ---
+archive.zip
+500.zip
+research-papers/
+
+# --- OS / IDE ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+~$*

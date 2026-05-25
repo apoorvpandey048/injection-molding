@@ -1,0 +1,67 @@
+@import "./styles/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* shadcn HSL variables, kept in sync with styles/tokens.css.
+       Format: "H S% L%" consumed as hsl(var(--name)). */
+    --background: 220 38% 6%;            /* color-bg */
+    --foreground: 215 35% 93%;           /* color-text-primary */
+
+    --card: 222 36% 11%;                 /* color-surface */
+    --card-foreground: 215 35% 93%;
+
+    --popover: 218 31% 15%;              /* color-surface-elevated */
+    --popover-foreground: 215 35% 93%;
+
+    --primary: 198 93% 60%;              /* color-accent (sky-400) */
+    --primary-foreground: 220 38% 6%;    /* dark text on bright accent */
+
+    --secondary: 218 31% 15%;            /* color-surface-elevated */
+    --secondary-foreground: 215 35% 93%;
+
+    --muted: 218 31% 15%;
+    --muted-foreground: 217 26% 69%;     /* color-text-secondary */
+
+    --accent: 218 28% 18%;               /* subtle hover surface */
+    --accent-foreground: 215 35% 93%;
+
+    --destructive: 2 88% 63%;            /* color-critical */
+    --destructive-foreground: 215 35% 93%;
+
+    --border: 219 28% 21%;               /* color-border */
+    --input: 219 28% 21%;
+    --ring: 198 93% 60%;                 /* color-accent — focus rings */
+
+    --radius: 0.625rem;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Inter Variable", Inter, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Tabular, mono numerals for metrics. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* Subtle fade/slide-in used when panels first receive data. */
+  @keyframes imm-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-imm-in {
+    animation: imm-fade-in 0.35s ease-out both;
+  }
+}
