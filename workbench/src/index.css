@@ -1,0 +1,57 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply bg-panel-inset text-zinc-200 font-sans antialiased;
+    overflow: hidden;
+  }
+
+  /* Thin, unobtrusive scrollbars for the dense panels. */
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply bg-panel-border rounded-full;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-panel border border-panel-border rounded-lg;
+  }
+  .panel-header {
+    @apply flex items-center gap-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 border-b border-panel-border select-none;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-panel-border bg-panel-raised px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-panel-border hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-active {
+    @apply border-sky-500/60 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 hover:text-sky-200;
+  }
+  .btn-icon {
+    @apply h-8 w-8 p-0;
+  }
+  .kbd {
+    @apply rounded border border-panel-border bg-panel-inset px-1.5 py-0.5 font-mono text-[10px] text-zinc-400;
+  }
+}
