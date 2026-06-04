@@ -18,7 +18,9 @@ dist/
 build/
 
 # --- data / artifacts ---
-data/
+# Anchored to the repo root so it does NOT match source dirs like
+# workbench/src/data/ (the live-data layer).
+/data/
 ml/datasets/
 *.parquet
 *.h5
