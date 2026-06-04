@@ -5,6 +5,9 @@ import { Bounds, GizmoHelper, GizmoViewport, OrbitControls, useBounds } from "@r
 import { EffectComposer, Outline } from "@react-three/postprocessing";
 import { loadModel, wb } from "@/lib/model";
 import { applyVisuals } from "@/lib/visuals";
+import { applyOpsVisuals } from "@/lib/opsVisuals";
+import { subsystemHealthMap } from "@/lib/health";
+import { MONITORED } from "@/lib/identity";
 import { useStore } from "@/store/store";
 import type { ModelIndex } from "@/types";
 
@@ -42,6 +45,7 @@ function CameraCommands({ index }: { index: ModelIndex }): null {
 
 /** Subscribes to all visual state and reconciles the three.js graph imperatively. */
 function SceneController({ index }: { index: ModelIndex }): null {
+  const mode = useStore((s) => s.mode);
   const assignments = useStore((s) => s.assignments);
   const selection = useStore((s) => s.selection);
   const hovered = useStore((s) => s.hovered);
@@ -49,10 +53,37 @@ function SceneController({ index }: { index: ModelIndex }): null {
   const viewMode = useStore((s) => s.viewMode);
   const displayMode = useStore((s) => s.displayMode);
   const showEdges = useStore((s) => s.showEdges);
+  // operations inputs
+  const snapshot = useStore((s) => s.snapshot);
+  const selectedSubsystem = useStore((s) => s.selectedSubsystem);
+  const hoveredSubsystem = useStore((s) => s.hoveredSubsystem);
 
   useEffect(() => {
-    applyVisuals(index, { assignments, selection, hovered, isolated, viewMode, displayMode, showEdges });
-  }, [index, assignments, selection, hovered, isolated, viewMode, displayMode, showEdges]);
+    if (mode === "operations") {
+      applyOpsVisuals(index, {
+        assignments,
+        health: subsystemHealthMap(snapshot, MONITORED),
+        selected: selectedSubsystem,
+        hovered: hoveredSubsystem,
+        showEdges,
+      });
+    } else {
+      applyVisuals(index, { assignments, selection, hovered, isolated, viewMode, displayMode, showEdges });
+    }
+  }, [
+    index,
+    mode,
+    assignments,
+    selection,
+    hovered,
+    isolated,
+    viewMode,
+    displayMode,
+    showEdges,
+    snapshot,
+    selectedSubsystem,
+    hoveredSubsystem,
+  ]);
 
   return null;
 }
@@ -60,43 +91,61 @@ function SceneController({ index }: { index: ModelIndex }): null {
 export function ModelScene(): React.JSX.Element {
   const index = use(getModel());
   const setIndex = useStore((s) => s.setIndex);
-  const selectMesh = useStore((s) => s.selectMesh);
-  const setHovered = useStore((s) => s.setHovered);
+  const initMapping = useStore((s) => s.initMapping);
+  const mode = useStore((s) => s.mode);
 
   useEffect(() => {
     setIndex(index);
-  }, [index, setIndex]);
+    void initMapping(index);
+  }, [index, setIndex, initMapping]);
 
   const selection = useStore((s) => s.selection);
   const hovered = useStore((s) => s.hovered);
 
+  // Outline is an Inspection affordance only — Operations uses tint + ghosting.
   const selectionObjs = useMemo<Object3D[]>(
     () =>
-      [...selection]
-        .map((id) => index.meshes.get(id)?.object)
-        .filter((o): o is NonNullable<typeof o> => Boolean(o)),
-    [selection, index],
+      mode === "inspection"
+        ? [...selection]
+            .map((id) => index.meshes.get(id)?.object)
+            .filter((o): o is NonNullable<typeof o> => Boolean(o))
+        : [],
+    [selection, index, mode],
   );
   const hoverObjs = useMemo<Object3D[]>(() => {
+    if (mode !== "inspection") return [];
     const o = hovered ? index.meshes.get(hovered)?.object : undefined;
     return o ? [o] : [];
-  }, [hovered, index]);
+  }, [hovered, index, mode]);
 
+  // Pointer handlers branch on mode: Operations picks the SUBSYSTEM under the
+  // cursor; Inspection picks the individual mesh.
   const onOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     const id = wb(e.object)?.id;
-    if (id) setHovered(id);
+    if (!id) return;
+    const s = useStore.getState();
+    if (s.mode === "operations") s.setHoveredSubsystem(s.assignments[id] ?? "Unknown");
+    else s.setHovered(id);
   };
   const onOut = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    setHovered(null);
+    const s = useStore.getState();
+    if (s.mode === "operations") s.setHoveredSubsystem(null);
+    else s.setHovered(null);
   };
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const id = wb(e.object)?.id;
     if (!id) return;
-    const additive = e.nativeEvent.shiftKey || e.nativeEvent.ctrlKey || e.nativeEvent.metaKey;
-    selectMesh(id, additive);
+    const s = useStore.getState();
+    if (s.mode === "operations") {
+      const sub = s.assignments[id] ?? "Unknown";
+      s.selectSubsystem(sub === "Unknown" ? null : sub);
+    } else {
+      const additive = e.nativeEvent.shiftKey || e.nativeEvent.ctrlKey || e.nativeEvent.metaKey;
+      s.selectMesh(id, additive);
+    }
   };
 
   return (
@@ -107,7 +156,7 @@ export function ModelScene(): React.JSX.Element {
       <directionalLight position={[6, 10, 8]} intensity={1.15} />
       <directionalLight position={[-8, 5, -6]} intensity={0.55} color="#9db4ff" />
 
-      <Bounds fit clip observe margin={1.25} maxDuration={0.6}>
+      <Bounds fit clip observe margin={1.12} maxDuration={0.6}>
         <primitive object={index.root} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick} />
         <CameraCommands index={index} />
       </Bounds>

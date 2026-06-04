@@ -23,7 +23,13 @@ ml/datasets/
 *.parquet
 *.h5
 mlruns/
-artifacts/
+# Ignore artifacts EXCEPT the trained models — committed so a DGX clone needs no
+# retraining (deterministic boot; see DEPLOYMENT.md).
+/artifacts/*
+!/artifacts/models/
+/artifacts/models/*
+!/artifacts/models/*.pkl
+!/artifacts/models/*.md
 
 # --- tunnel (cloudflared quick tunnel for remote demos) ---
 /bin/

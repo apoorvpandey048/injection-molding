@@ -1,87 +1,133 @@
-# Task Tracker
+# TASKS — IMM Digital Twin Platform
 
-Source of truth: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). If a task here conflicts with the plan, the plan wins — fix the task row, don't drift.
+> Traceable task tracker. Source of truth for *what* and *why* is
+> [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md); this file tracks status. Status:
+> ☐ planned · ◑ in progress · ☑ done. Updated continuously through implementation.
+> (Prior prototype tasks are preserved in git history.)
 
-Legend: 🔲 todo · 🟡 in-progress · ✅ done · ⛔ blocked
-
----
-
-## Lane A — Simulator + ML  (owner: `sim-agent`)
-
-| ID  | Task | Status | Owner | Notes |
-|-----|------|--------|-------|-------|
-| A1  | Author `src/simulator/profiles.py` — nominal per-channel curve generators (cavity_pressure, hydraulic_injection_pressure, screw_position, hold_pressure_step_1..10, barrel zone temps). Parametric, deterministic from seed. | 🔲 | sim-agent | Shapes only — no degradation logic yet. |
-| A2  | Author `src/simulator/machine.py` — `Machine` class that emits one `cycle_output` dict per `tick()` using profiles + nominal noise. | 🔲 | sim-agent | Validates against `contracts/cycle_output.schema.json`. |
-| A3  | Author `src/simulator/degradation.py` — hidden component-health FSM (5 components, h∈[0,1], drift + jumps). | 🔲 | sim-agent | State is private to the simulator; must not leak through any return value. |
-| A4  | Wire fault handlers: `check_ring_wear`, `heater_drift`, `hydraulic_pump_wear` — each modifies FSM state, which biases profile params on subsequent cycles. | 🔲 | sim-agent | Symptom map matches §5 of the plan. |
-| A5  | Author `src/datasource/simulator_source.py` — `SimulatorSource(DataSource)` wrapping `Machine`. Implements `stream()`, `inject_fault()`, `set_speedup()`. | 🔲 | sim-agent | Only public-facing surface for the rest of the system. |
-| A6  | Author `src/datasource/plc_source.py` — `PLCSource(DataSource)` stub raising `NotImplementedError` with docstring describing OPC-UA / Modbus mapping. | 🔲 | sim-agent | Proves the interface is real, not theatre. |
-| A7  | Author `src/ml/features.py` — observable-signal feature extractor (per-cycle scalars + light derived stats from curves). | 🔲 | sim-agent | **Forbidden:** any import from `src.simulator.*`. Lint test A-T3 enforces this. |
-| A8  | Author `scripts/generate_training_data.py` — produces `data/synthetic/train.parquet` from N seeded simulator runs, with `machine_id` group label and per-cycle quality label + RUL label. | 🔲 | sim-agent | Deterministic for a given seed list. |
-| A9  | Author `src/ml/train_quality.py` — train calibrated GBC; save to `artifacts/models/quality.pkl`; emit metrics JSON. | 🔲 | sim-agent | GroupKFold by `machine_id`. |
-| A10 | Author `src/ml/train_rul.py` — three quantile GBRs (α=0.1/0.5/0.9); save to `artifacts/models/rul.pkl`; emit metrics JSON. | 🔲 | sim-agent | GroupKFold by `machine_id`. No leakage. |
-| A11 | Author `src/ml/predict.py` — load both models, expose `predict(cycle_output) -> {quality, rul_p10/p50/p90}`. | 🔲 | sim-agent | Called by Lane C glue. |
-| A12 | Tests: A-T1 schema-roundtrip · A-T2 fault-symptom emerges in ≤100 cycles · A-T3 AST lint (no simulator imports in `ml/`) · A-T4 GroupKFold split correctness · A-T5 model load+predict latency <10ms · A-T6 determinism on fixed seed. | 🔲 | sim-agent | A-T3 is the leakage guard — do not skip. |
-| A13 | `make train` target wired (regenerates data + retrains both models, end-to-end, deterministic). | 🔲 | sim-agent | Coordinate with C8. |
-
-## Lane B — Frontend + 2D Twin  (owner: `frontend-agent`)
-
-| ID  | Task | Status | Owner | Notes |
-|-----|------|--------|-------|-------|
-| B1  | Scaffold `web/` with Vite + TypeScript + vanilla DOM. Dark theme, one accent color, considered typography. | 🔲 | frontend-agent | No React, no Next.js. |
-| B2  | Drop `web/public/mock_snapshot.json` matching `contracts/snapshot.schema.json` so the UI is buildable before Lane C ships the live feed. | 🔲 | frontend-agent | Kill-by: end of hour 4. |
-| B3  | `ProcessCharts` component — uPlot, two live curves (cavity_pressure, hydraulic_injection_pressure), rolling window. | 🔲 | frontend-agent | |
-| B4  | `HealthBars` component — 5 component bars, color-lerp `#2dd4bf → #ef4444`. | 🔲 | frontend-agent | Bound to `snapshot.health[]`. |
-| B5  | `RULBand` component — most-degraded component's p50 line with p10/p90 band. | 🔲 | frontend-agent | |
-| B6  | `QualityCard` component — predicted class + probability bar; flashes on transitions. | 🔲 | frontend-agent | |
-| B7  | `Twin2D` component — inline SVG side-view of IMM. Named regions: `region-clamp`, `region-mold`, `region-injection`, `region-barrel`, `region-hydraulic`, `region-drive`. `setHealth(id, h)` + `pulse(id)` API. | 🔲 | frontend-agent | The 3D-swap contract lives here. |
-| B8  | `FaultButtons` component — three buttons that POST `contracts/fault_injection.schema.json` to `/api/fault`. | 🔲 | frontend-agent | |
-| B9  | WS client wiring — subscribe to `/ws`, dispatch snapshots into a typed store, all components re-render off the store. | 🔲 | frontend-agent | Fallback to polling `/api/snapshot` if WS missing — log a console warning. |
-| B10 | Speedup toggle in header — POST to `/api/speedup`. | 🔲 | frontend-agent | |
-| B11 | Playwright smoke test: load page, see live cavity_pressure update, click `check_ring_wear`, observe health bar drop within 30s of wallclock at 100× speedup. | 🔲 | frontend-agent | |
-| B12 | Visual polish pass — spacing, type scale, accent restraint, empty/loading states. | 🔲 | frontend-agent | Last 60 minutes before recording. |
-
-## Lane C — Infra + Glue + Demo  (owner: `infra-agent`)
-
-| ID  | Task | Status | Owner | Notes |
-|-----|------|--------|-------|-------|
-| C1  | Author `contracts/channels.py` — final channel taxonomy (per §4 of plan). Read-only thereafter. | 🔲 | infra-agent | Lanes A and B import from here. |
-| C2  | Author `contracts/snapshot.schema.json`, `contracts/cycle_output.schema.json`, `contracts/fault_injection.schema.json`. | 🔲 | infra-agent | Locked by end of hour 1. |
-| C3  | Author `contracts/datasource.py` — `DataSource` ABC: `stream()`, `inject_fault()`, `set_speedup()`, `machine_id`. | 🔲 | infra-agent | |
-| C4  | `run.py` skeleton — aiohttp app serving `/`, `/api/snapshot`, `/ws`, `/api/fault`, `/api/speedup`. Uses a `StubSource` initially that replays `mock_snapshot.json`. | 🔲 | infra-agent | Unblocks B before A is ready. |
-| C5  | Swap `StubSource` for `SimulatorSource` once A5 lands. WS broadcasts each cycle's snapshot. | 🔲 | infra-agent | Triggers smoke moment (X2). |
-| C6  | Integrate `src/ml/predict.py` into the per-cycle snapshot assembly once A11 lands. | 🔲 | infra-agent | |
-| C7  | `Makefile` targets: `make demo`, `make train`, `make test`, `make web`. | 🔲 | infra-agent | `make demo` is the single command. |
-| C8  | `pyproject.toml` / `requirements.txt` — pinned versions. No Docker, no compose. | 🔲 | infra-agent | |
-| C9  | `README.md` — 5-line "what" + 30-line "how to run". Nothing else. | 🔲 | infra-agent | |
-| C10 | `docs/DEMO_SCRIPT.md` — 60-second narration with timestamps. | 🔲 | infra-agent | |
-| C11 | `docs/ELEVATOR.md` — 30-second elevator paragraph. | 🔲 | infra-agent | |
-| C12 | `docs/REAL_DATA_SWAP.md` — what changes when PLC data arrives (cross-ref §12 of plan). | 🔲 | infra-agent | |
-| C13 | `scripts/record_demo.py` — runs the sim at 100× speedup, drives fault buttons on a schedule, exits cleanly so OBS/ffmpeg can wrap. | 🔲 | infra-agent | |
-| C14 | `.gitignore` — venv, `artifacts/models/*.pkl`, `data/synthetic/*.parquet`, node_modules, dist. | 🔲 | infra-agent | |
+**Legend — brief requirement column** links each task to the section of `prompt.md`
+it satisfies, so every requirement is traceable to a task and vice-versa.
 
 ---
 
-## Cross-lane integration points
+## Phase 0 — Architecture review
 
-| ID | What | Lanes | Status |
-|----|------|-------|--------|
-| X1 | Contracts published (C1+C2+C3), A and B unblocked | C → A, B | 🔲 |
-| X2 | First real `snapshot.json` from `SimulatorSource` reaches the frontend over WS | A, C → B | 🔲 |
-| X3 | Fault button click triggers visible symptom (curve change + health bar drop) within 30 cycles | B → C → A → C → B | 🔲 |
-| X4 | Both models trained and integrated into the per-cycle snapshot (RUL band + quality card live) | A → C → B | 🔲 |
-| X5 | Full 60-second demo recording captured end-to-end | C | 🔲 |
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T0.1 | ARCHITECTURE.md | Phase 0 | ☑ |
+| T0.2 | UI_STRATEGY.md | Phase 0 / Visual Design | ☑ |
+| T0.3 | DECISIONS.md | Phase 0 | ☑ |
+| T0.4 | RISK_REGISTER.md | Phase 0 | ☑ |
+| T0.5 | DEPLOYMENT.md | Phase 0 / Deployment Workflow | ☑ |
+| T0.6 | IMPLEMENTATION_PLAN.md (phased, acceptance, tests) | Phase 0 / Implementation Approach | ☑ |
+| T0.7 | TASKS.md (traceable) | Phase 0 | ☑ |
 
 ---
 
-## Update protocol
+## Phase 1 — Platform shell & live data
 
-Agents update their own rows only. Status changes go through a commit:
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T1.1 | Promote workbench→platform app; add Recharts + Radix deps | System Architecture | ☑ |
+| T1.2 | Port data layer (IMMClient, useSnapshot, Snapshot type) | Collaborative/Deployment | ☑ |
+| T1.3 | Extend store: snapshot, connected, mode, selectedSubsystem, history | System Architecture | ☑ |
+| T1.4 | Command Center layout shell (AppBar/Rail/Viewer/ContextPanel/StatusBar) | 3D Digital Twin Viewer | ☑ |
+| T1.5 | Viewer renders model.dae; orbit/pan/zoom/fit/reset/gizmo | 3D Digital Twin Viewer | ☑ |
+| T1.6 | Operations ⇄ Inspection mode toggle | Inspection Mode | ☑ |
 
-```
-git commit -m "[LANE-A] task A3 → 🟡 in-progress"
-```
+---
 
-When marking ✅, append a one-line note in the **Notes** column about what shipped (file path, key decision, or test that now passes). Do not delete rows; if a task is descoped, mark it ⛔ with a note pointing to the replacement task.
+## Phase 2 — Component Mapping & Health Engines
 
-Cross-lane (X*) rows are updated by whichever agent observes the integration succeeding — and they must commit a one-line proof (a curl output, a screenshot path, a passing test name).
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T2.1 | Spatial + name-hint classifier (deterministic, complete) | Component Mapping Engine | ☑ |
+| T2.2 | map:generate script + committed component-map.detailed.json + loader | Component Interaction | ☑ |
+| T2.3 | identity.ts (Subsystem↔backend key↔color↔fault) | Component Interaction | ☑ |
+| T2.4 | Health Engine: per-subsystem health/status/trend | Component Health Engine | ☑ |
+| T2.5 | applyVisuals health-tint channel + selected emphasis | Component Interaction / Performance | ☑ |
+| T2.6 | Subsystem Rail (color, live health, hover→highlight, click→focus) | Component Interaction | ☑ |
+| T2.7 | Camera frameSubsystem cinematic focus + persistent pose | 3D Digital Twin Viewer | ☑ |
+
+---
+
+## Phase 3 — Context Panel, charts, tooltips
+
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T3.1 | Context Panel = active subsystem (health/RUL/status/failP/rec/sensors/trend) | Component Health Panel | ☑ |
+| T3.2 | Threshold model shared by charts + tooltips | Graph System / Tooltips | ☑ |
+| T3.3 | Chart toolkit: crosshair, threshold regions, forecast, failure marker | Graph System | ☑ |
+| T3.4 | Charts: RUL band, sensor curve, health trend, quality | Graph System | ☑ |
+| T3.5 | Explain system (What/Reading/Action, data-derived) | Intelligent Tooltips | ☑ |
+| T3.6 | Tooltips across metrics/points/sensors/subsystems/state/controls | Intelligent Tooltips | ☑ |
+
+---
+
+## Phase 4 — Inspection mode integration
+
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T4.1 | Host workbench panels in Inspection layout (one store, one scene) | Inspection Mode | ☑ |
+| T4.2 | Mesh pick/select/isolate/wireframe/x-ray/edges/search | Inspection Mode | ☑ |
+| T4.3 | Mapping editor: assign/clear/group, export, POST persist | Inspection Mode / Deployment | ☑ |
+| T4.4 | Import + round-trip + stale-ID tolerance | Deployment | ☑ |
+| T4.5 | Camera + selection continuity across modes | 3D Digital Twin Viewer | ☑ |
+
+---
+
+## Phase 5 — Determinism, persistence, collaboration, cutover
+
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T5.1 | Backend file persistence: /api/settings + /api/component-map (atomic write, load-on-boot) | Deployment Workflow | ☑ |
+| T5.2 | Collaboration: URL-hash session state (mode + selected subsystem) | Collaborative Review | ☑ |
+| T5.3 | run.py cutover (WEB_DIR→workbench/dist, /map route, env-rollback); demo.sh builds platform | Deployment Workflow | ☑ |
+| T5.4 | Docs: README + PROTOTYPE_OVERVIEW.docx (22 figures) + screenshot gallery | Deployment | ☑ |
+| T5.5 | Final validation pass (laptop ☑ via headless browser; tunnel pending) | Deployment Workflow | ◑ |
+
+## Phase 6 — Industry-ready polish (post-review)
+
+| ID | Task | Brief req | Status |
+|----|------|-----------|--------|
+| T6.1 | Responsive desktop layout (fluid panels, viewer ≥55% from 1280px) + "Viewing·" badge | Visual Design / Performance | ☑ |
+| T6.2 | File-first component-map precedence (determinism over stale localStorage) | Deployment Workflow | ☑ |
+| T6.3 | Rebalanced spatial classifier (every subsystem visibly present; Drive 8→57) | Component Mapping Engine | ☑ |
+| T6.4 | Tighter camera framing (Bounds margin 1.25→1.12) | 3D Digital Twin Viewer | ☑ |
+| T6.5 | Commit trained models for friction-free DGX boot (.gitignore exception) | Deployment Workflow | ☑ |
+| T6.6 | DGX quickstart + shareable-link workflow documented | Collaborative Review / Deployment | ☑ |
+| T6.7 | Comprehensive re-verification + 22 fresh screenshots | Implementation Approach | ☑ |
+
+> **Scope notes (honest status):**
+> - T5.1 persists `cycles_per_day` and the component map. Per-threshold overrides
+>   (`/api/config`) are a documented future extension — thresholds are currently
+>   fixed constants from `degradation.py`.
+> - T5.2 shares mode + selected subsystem in the URL hash; camera-pose sharing is a
+>   future extension (D-09).
+> - T5.5: validated on the laptop with a headless-Chromium smoke test (model loads,
+>   subsystem hover/select + camera focus, detail panel, charts, mode switch, map
+>   persistence round-trip all pass). The `--tunnel` path is unchanged plumbing but
+>   was not exercised in this environment.
+> - Pre-existing: `tests/test_simulator.py::test_at5_heater_drift_barrel_temp` fails
+>   on `main` independent of this work (simulator untouched) — a borderline
+>   stochastic assertion in the heater-drift fault. Left as-is (not in scope).
+
+---
+
+## Requirement → task coverage (brief checklist)
+
+| Brief requirement | Tasks |
+|-------------------|-------|
+| Modular architecture (9 modules) | ARCHITECTURE §3; T1.*–T5.* |
+| 3D viewer as primary experience | T1.4, T1.5, T2.7 |
+| Orbit/pan/zoom/reset/fit/focus/transitions/persistent | T1.5, T2.7, T4.5 |
+| Component interaction (hover/highlight/click/focus/details) | T2.6, T3.1, T4.2 |
+| Subsystem visual identity (5 colors) | T2.3, T2.5 |
+| Component health panel = active context | T3.1 |
+| Intelligent tooltips (what/good-bad/action) | T3.5, T3.6 |
+| Graph system (crosshair/thresholds/forecast/markers) | T3.2, T3.3, T3.4 |
+| Inspection mode (selection/hierarchy/isolation/wireframe/search/editor) | T4.1–T4.4 |
+| Collaborative review | T5.2 |
+| Deterministic deployment + persistence | T5.1, T5.3, D-07 |
+| Performance (60 FPS) | T2.5 (imperative reconcile), R-01 |
+| Always-deployable / never break | D-08, T5.3 (cutover last) |

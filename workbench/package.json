@@ -13,13 +13,17 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@react-three/drei": "^10.0.0",
     "@react-three/fiber": "^9.0.0",
     "@react-three/postprocessing": "^3.0.4",
+    "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "postprocessing": "^6.36.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "recharts": "^2.15.4",
+    "tailwind-merge": "^2.6.1",
     "three": "^0.184.0",
     "zustand": "^5.0.0"
   },

@@ -45,16 +45,18 @@ else
   echo "==> Models present."
 fi
 
-# 3. Frontend build -----------------------------------------------------------
-if [ ! -f "web/dist/index.html" ]; then
-  echo "==> Building frontend (first run)…"
+# 3. Platform frontend build --------------------------------------------------
+# Builds the unified Digital Twin Platform (workbench/dist). run.py serves this
+# by default; set WEB_DIR=web/dist to roll back to the legacy dashboard.
+if [ ! -f "workbench/dist/index.html" ]; then
+  echo "==> Building the Digital Twin Platform frontend (first run)…"
   if ! command -v npm >/dev/null 2>&1; then
     echo "ERROR: npm is required to build the frontend. Install Node.js, then re-run ./demo.sh" >&2
     exit 1
   fi
-  ( cd web && npm install && VITE_ENABLE_3D=true npm run build )
+  ( cd workbench && npm install && npm run build )
 else
-  echo "==> Frontend build present."
+  echo "==> Platform build present."
 fi
 
 # 4. cloudflared (only when --tunnel) -----------------------------------------

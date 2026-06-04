@@ -1,14 +1,21 @@
 import { create } from "zustand";
 import type { DisplayMode, MeshInfo, ModelIndex, TreeNode, ViewMode } from "@/types";
 import type { Subsystem } from "@/subsystems";
+import { SUBSYSTEMS } from "@/subsystems";
+import type { Snapshot } from "@/data/api";
+import { resolveMapping, type MapSource } from "@/lib/mapResolve";
 
-const STORAGE_KEY = "imm-workbench:v1";
+const STORAGE_KEY = "imm-platform:v1";
+const HISTORY_CAP = 300;
+
+export type AppMode = "operations" | "inspection";
 
 interface Persisted {
   assignments: Record<string, Subsystem>;
   viewMode: ViewMode;
   displayMode: DisplayMode;
   showEdges: boolean;
+  mode: AppMode;
 }
 
 function loadPersisted(): Partial<Persisted> {
@@ -27,16 +34,46 @@ export type CameraCommand =
   | { kind: "reset"; nonce: number }
   | null;
 
-export interface WorkbenchState {
+function computeSubsystemMeshes(
+  index: ModelIndex | null,
+  assignments: Record<string, Subsystem>,
+): Record<Subsystem, string[]> {
+  const out = Object.fromEntries(SUBSYSTEMS.map((s) => [s, [] as string[]])) as Record<Subsystem, string[]>;
+  if (!index) return out;
+  index.meshes.forEach((_info, id) => {
+    out[assignments[id] ?? "Unknown"].push(id);
+  });
+  return out;
+}
+
+export interface PlatformState {
   // ---- model ----
   index: ModelIndex | null;
   loadError: string | null;
   setIndex: (index: ModelIndex) => void;
   setLoadError: (msg: string) => void;
 
-  // ---- assignment (Phase 5) ----
-  /** meshId -> subsystem. Absent means the implicit "Unknown" default. */
+  // ---- live data (Operations) ----
+  snapshot: Snapshot | null;
+  connected: boolean;
+  /** Per-backend-key health history ring-buffer (newest last). */
+  history: Record<string, number[]>;
+  ingestSnapshot: (snap: Snapshot) => void;
+  setConnected: (b: boolean) => void;
+
+  // ---- app mode + active context ----
+  mode: AppMode;
+  setMode: (m: AppMode) => void;
+  selectedSubsystem: Subsystem | null;
+  hoveredSubsystem: Subsystem | null;
+  selectSubsystem: (sub: Subsystem | null) => void;
+  setHoveredSubsystem: (sub: Subsystem | null) => void;
+
+  // ---- component mapping ----
   assignments: Record<string, Subsystem>;
+  subsystemMeshes: Record<Subsystem, string[]>;
+  mapSource: MapSource | "local" | null;
+  initMapping: (index: ModelIndex) => Promise<void>;
   assignSelection: (subsystem: Subsystem) => void;
   assignIds: (ids: string[], subsystem: Subsystem) => void;
   assignGroup: (groupId: string, subsystem: Subsystem) => void;
@@ -44,9 +81,8 @@ export interface WorkbenchState {
   resetAssignments: () => void;
   importAssignments: (a: Record<string, Subsystem>) => void;
 
-  // ---- selection (Phase 2/3) ----
+  // ---- mesh-level selection (Inspection) ----
   selection: Set<string>;
-  /** The last mesh or group node the user activated — drives the inspector + tree scroll. */
   activeNodeId: string | null;
   hovered: string | null;
   selectMesh: (id: string, additive?: boolean) => void;
@@ -55,7 +91,7 @@ export interface WorkbenchState {
   clearSelection: () => void;
   setHovered: (id: string | null) => void;
 
-  // ---- isolation / display (Phase 4 + 6) ----
+  // ---- isolation / display (Inspection) ----
   isolated: Set<string> | null;
   viewMode: ViewMode;
   displayMode: DisplayMode;
@@ -66,7 +102,7 @@ export interface WorkbenchState {
   setDisplayMode: (m: DisplayMode) => void;
   toggleEdges: () => void;
 
-  // ---- hierarchy explorer (Phase 3) ----
+  // ---- hierarchy explorer (Inspection) ----
   search: string;
   expanded: Set<string>;
   setSearch: (s: string) => void;
@@ -88,12 +124,13 @@ export interface WorkbenchState {
 
 const persisted = loadPersisted();
 
-function persist(state: WorkbenchState) {
+function persist(state: PlatformState) {
   const data: Persisted = {
     assignments: state.assignments,
     viewMode: state.viewMode,
     displayMode: state.displayMode,
     showEdges: state.showEdges,
+    mode: state.mode,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -109,19 +146,93 @@ function meshIdsOf(index: ModelIndex | null, nodeId: string): string[] {
   return node ? node.meshIds : index.meshes.has(nodeId) ? [nodeId] : [];
 }
 
-export const useStore = create<WorkbenchState>((set, get) => {
+export const useStore = create<PlatformState>((set, get) => {
   let nonce = 0;
   const next = () => (nonce += 1);
 
-  const afterAssign = () => persist(get());
+  const recompute = () =>
+    set((s) => ({ subsystemMeshes: computeSubsystemMeshes(s.index, s.assignments) }));
+  const afterAssign = () => {
+    recompute();
+    persist(get());
+  };
 
   return {
     index: null,
     loadError: null,
-    setIndex: (index) => set({ index }),
+    setIndex: (index) => set({ index, subsystemMeshes: computeSubsystemMeshes(index, get().assignments) }),
     setLoadError: (msg) => set({ loadError: msg }),
 
+    // ---- live data ----
+    snapshot: null,
+    connected: false,
+    history: {},
+    ingestSnapshot: (snap) =>
+      set((s) => {
+        const prev = s.snapshot;
+        const base = prev && snap.cycle_index < prev.cycle_index ? {} : s.history;
+        const hist: Record<string, number[]> = { ...base };
+        for (const key of Object.keys(snap.health ?? {})) {
+          const arr = hist[key] ? hist[key].slice() : [];
+          arr.push(snap.health[key]);
+          if (arr.length > HISTORY_CAP) arr.shift();
+          hist[key] = arr;
+        }
+        return { snapshot: snap, history: hist, connected: true };
+      }),
+    setConnected: (b) => set({ connected: b }),
+
+    // ---- mode + context ----
+    mode: persisted.mode ?? "operations",
+    setMode: (m) =>
+      set((s) => {
+        // leaving inspection: drop mesh-level state so operations renders cleanly
+        const leaving = m === "operations";
+        persist({ ...s, mode: m } as PlatformState);
+        return leaving
+          ? { mode: m, isolated: null, selection: new Set<string>(), hovered: null, activeNodeId: null }
+          : { mode: m };
+      }),
+    selectedSubsystem: null,
+    hoveredSubsystem: null,
+    selectSubsystem: (sub) => {
+      if (sub == null) {
+        set({ selectedSubsystem: null });
+        return;
+      }
+      const ids = get().subsystemMeshes[sub] ?? [];
+      set({
+        selectedSubsystem: sub,
+        cameraCommand: ids.length ? { kind: "focus", ids, nonce: next() } : get().cameraCommand,
+      });
+    },
+    setHoveredSubsystem: (sub) => {
+      if (get().hoveredSubsystem !== sub) set({ hoveredSubsystem: sub });
+    },
+
+    // ---- mapping ----
     assignments: persisted.assignments ?? {},
+    subsystemMeshes: computeSubsystemMeshes(null, persisted.assignments ?? {}),
+    mapSource: null,
+    initMapping: async (index) => {
+      // The committed component map is the SOURCE OF TRUTH and wins for
+      // determinism (a fresh clone / a returning reviewer both see the same map).
+      // localStorage edits only apply when there is no committed file; otherwise
+      // unsaved inspection edits are session-local until exported.
+      const total = index.meshes.size;
+      const { assignments, source } = await resolveMapping(index);
+      if (source === "file") {
+        set({ assignments, mapSource: "file", subsystemMeshes: computeSubsystemMeshes(index, assignments) });
+        return;
+      }
+      const existing = get().assignments;
+      if (Object.keys(existing).length >= total * 0.5) {
+        set({ mapSource: "local", subsystemMeshes: computeSubsystemMeshes(index, existing) });
+        return;
+      }
+      set({ assignments, mapSource: source, subsystemMeshes: computeSubsystemMeshes(index, assignments) });
+      persist(get());
+    },
     assignIds: (ids, subsystem) => {
       if (!ids.length) return;
       set((s) => {
@@ -131,13 +242,8 @@ export const useStore = create<WorkbenchState>((set, get) => {
       });
       afterAssign();
     },
-    assignSelection: (subsystem) => {
-      const ids = [...get().selection];
-      get().assignIds(ids, subsystem);
-    },
-    assignGroup: (groupId, subsystem) => {
-      get().assignIds(meshIdsOf(get().index, groupId), subsystem);
-    },
+    assignSelection: (subsystem) => get().assignIds([...get().selection], subsystem),
+    assignGroup: (groupId, subsystem) => get().assignIds(meshIdsOf(get().index, groupId), subsystem),
     clearAssignment: (ids) => {
       set((s) => {
         const a = { ...s.assignments };
@@ -155,6 +261,7 @@ export const useStore = create<WorkbenchState>((set, get) => {
       afterAssign();
     },
 
+    // ---- mesh selection ----
     selection: new Set(),
     activeNodeId: null,
     hovered: null,
@@ -170,19 +277,18 @@ export const useStore = create<WorkbenchState>((set, get) => {
         const ids = meshIdsOf(s.index, nodeId);
         if (!ids.length) return {};
         const sel = new Set(additive ? s.selection : []);
-        // Toggle the group as a unit when additive and already fully selected.
         const fully = ids.every((i) => sel.has(i));
         if (additive && fully) ids.forEach((i) => sel.delete(i));
         else ids.forEach((i) => sel.add(i));
         return { selection: sel, activeNodeId: nodeId };
       }),
-    setSelection: (ids, activeNodeId = null) =>
-      set({ selection: new Set(ids), activeNodeId }),
+    setSelection: (ids, activeNodeId = null) => set({ selection: new Set(ids), activeNodeId }),
     clearSelection: () => set({ selection: new Set(), activeNodeId: null }),
     setHovered: (id) => {
       if (get().hovered !== id) set({ hovered: id });
     },
 
+    // ---- isolation / display ----
     isolated: null,
     viewMode: persisted.viewMode ?? "original",
     displayMode: persisted.displayMode ?? "solid",
@@ -205,6 +311,7 @@ export const useStore = create<WorkbenchState>((set, get) => {
       persist(get());
     },
 
+    // ---- hierarchy ----
     search: "",
     expanded: new Set(),
     setSearch: (s) => set({ search: s }),
@@ -231,6 +338,7 @@ export const useStore = create<WorkbenchState>((set, get) => {
       }),
     collapseAll: () => set({ expanded: new Set() }),
 
+    // ---- camera ----
     cameraCommand: null,
     fitView: () => set({ cameraCommand: { kind: "fit", nonce: next() } }),
     focusSelection: () => {
@@ -239,17 +347,16 @@ export const useStore = create<WorkbenchState>((set, get) => {
     },
     resetView: () => set({ cameraCommand: { kind: "reset", nonce: next() } }),
 
+    // ---- toast ----
     toast: null,
     setToast: (msg) => set({ toast: msg }),
   };
 });
 
-// ---- selectors / derived helpers (kept outside the store to avoid re-renders) ----
-
+// ---- selectors / derived helpers ----
 export function subsystemOf(assignments: Record<string, Subsystem>, meshId: string): Subsystem {
   return assignments[meshId] ?? "Unknown";
 }
-
 export function meshInfoById(index: ModelIndex | null, id: string): MeshInfo | undefined {
   return index?.meshes.get(id);
 }

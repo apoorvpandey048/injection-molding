@@ -39,21 +39,20 @@ if defined NEED_TRAIN (
   echo ==^> Models present.
 )
 
-REM 3. Frontend build
-if not exist "web\dist\index.html" (
-  echo ==^> Building frontend ^(first run^)...
+REM 3. Platform frontend build (workbench\dist; run.py serves it by default)
+if not exist "workbench\dist\index.html" (
+  echo ==^> Building the Digital Twin Platform frontend ^(first run^)...
   where npm >nul 2>nul
   if errorlevel 1 (
     echo ERROR: npm is required to build the frontend. Install Node.js, then re-run demo.bat
     exit /b 1
   )
-  pushd web
+  pushd workbench
   call npm install
-  set "VITE_ENABLE_3D=true"
   call npm run build
   popd
 ) else (
-  echo ==^> Frontend build present.
+  echo ==^> Platform build present.
 )
 
 REM 4. Serve

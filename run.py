@@ -18,9 +18,32 @@ from src.simulator.degradation import FAILURE_THRESHOLD, OPTIMAL_REPLACE_HIGH, O
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-WEB_DIR = Path(__file__).parent / "web" / "dist"
-if not WEB_DIR.exists():
-    WEB_DIR = Path(__file__).parent / "web" / "public"
+ROOT = Path(__file__).parent
+
+# Served SPA directory. The platform build (workbench/dist) is the default; an
+# explicit WEB_DIR env var overrides it (instant rollback to the legacy web/
+# dashboard — see DECISIONS.md D-08 / RISK_REGISTER R-12).
+def _resolve_web_dir() -> Path:
+    env = os.environ.get("WEB_DIR")
+    if env:
+        return Path(env)
+    for cand in (
+        ROOT / "workbench" / "dist",   # the platform (primary)
+        ROOT / "web" / "dist",         # legacy dashboard
+        ROOT / "workbench" / "public",
+        ROOT / "web" / "public",
+    ):
+        if cand.exists():
+            return cand
+    return ROOT / "web" / "dist"
+
+WEB_DIR = _resolve_web_dir()
+
+# Persisted configuration + the active component map (deterministic deployment:
+# survives clone+pull+start with no manual recreation — DEPLOYMENT.md §2).
+CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", ROOT / "config" / "platform.json"))
+MAP_DIR = Path(os.environ.get("MAP_DIR", ROOT / "workbench" / "public" / "map"))
+MAP_PATH = MAP_DIR / "component-map.detailed.json"
 
 MODELS_AVAILABLE = (
     Path("artifacts/models/quality.pkl").exists()
@@ -40,6 +63,38 @@ _cycle_queue: _queue.Queue = _queue.Queue(maxsize=8)
 # component lifespans (~4k–13k cycles) so a healthy machine reads schedule/monitor
 # rather than "critical"; adjustable live via the Settings drawer (/api/settings).
 CONFIG: Dict[str, Any] = {"cycles_per_day": 40}
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write JSON via temp-file + rename so a crash never leaves a half-file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(path)
+
+
+def _load_config() -> None:
+    """Load persisted config on boot; missing/corrupt files fall back to defaults."""
+    try:
+        if CONFIG_PATH.exists():
+            saved = json.loads(CONFIG_PATH.read_text())
+            if isinstance(saved, dict):
+                cpd = saved.get("cycles_per_day")
+                if isinstance(cpd, (int, float)) and cpd > 0:
+                    CONFIG["cycles_per_day"] = float(cpd)
+                log.info("Loaded persisted config from %s", CONFIG_PATH)
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("Could not read %s (%s); using defaults", CONFIG_PATH, exc)
+
+
+def _save_config() -> None:
+    try:
+        _atomic_write_json(CONFIG_PATH, dict(CONFIG))
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("Could not persist config: %s", exc)
+
+
+_load_config()
 
 
 def _build_snapshot(cycle: Dict[str, Any]) -> Dict[str, Any]:
@@ -211,7 +266,31 @@ async def handle_post_settings(request: web.Request) -> web.Response:
         if cpd <= 0:
             return web.json_response({"error": "cycles_per_day must be > 0"}, status=400)
         CONFIG["cycles_per_day"] = cpd
+        _save_config()
     return web.json_response(dict(CONFIG))
+
+
+async def handle_get_component_map(request: web.Request) -> web.Response:
+    """Serve the active component map (source of truth). 404 if not generated yet —
+    the platform then derives it at runtime and POSTs it back."""
+    if MAP_PATH.exists():
+        return web.FileResponse(MAP_PATH)
+    return web.json_response({"error": "no component map persisted yet"}, status=404)
+
+
+async def handle_post_component_map(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    if not isinstance(body, dict) or "componentMap" not in body:
+        return web.json_response({"error": "expected a detailed component map object"}, status=400)
+    try:
+        _atomic_write_json(MAP_PATH, body)
+    except Exception as exc:
+        return web.json_response({"error": f"could not persist: {exc}"}, status=500)
+    log.info("Persisted component map (%d subsystems) to %s", len(body.get("componentMap", {})), MAP_PATH)
+    return web.json_response({"status": "ok", "path": str(MAP_PATH)})
 
 
 async def handle_speedup(request: web.Request) -> web.Response:
@@ -246,6 +325,9 @@ def make_app() -> web.Application:
     app.router.add_post("/api/speedup", handle_speedup)
     app.router.add_get("/api/settings",  handle_get_settings)
     app.router.add_post("/api/settings", handle_post_settings)
+    app.router.add_get("/map/component-map.detailed.json", handle_get_component_map)
+    app.router.add_get("/api/component-map",  handle_get_component_map)
+    app.router.add_post("/api/component-map", handle_post_component_map)
     if (WEB_DIR / "assets").exists():
         app.router.add_static("/assets", WEB_DIR / "assets", show_index=False)
     # Static public assets needed at runtime by the built app (3D backdrop + Draco decoder).

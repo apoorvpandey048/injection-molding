@@ -1,281 +1,430 @@
-You are the lead planner for a fast-track prototype build. Your job is to produce
-TWO ARTIFACTS in this conversation, then stop:
+We are transitioning from a standalone Machine Component Mapping Workbench into a production-grade Industrial Digital Twin Platform for Injection Molding Machine predictive maintenance.
 
-1. IMPLEMENTATION_PLAN.md — a single markdown document, the source of truth
-2. TASKS.md — a task tracker with status columns the agents update as they work
+IMPORTANT CONTEXT
 
-Then you produce three ready-to-paste KICKOFF PROMPTS, one per agent. Do not
-write any code yourself. Do not start executing. Plan only.
+The project already contains:
 
-═══════════════════════════════════════════════════════════════════════════════
-PROJECT CONTEXT
-═══════════════════════════════════════════════════════════════════════════════
+* Injection molding machine 3D model
+* Component mapping workbench
+* component-map.detailed.json
+* Existing predictive maintenance dashboard
+* Health scoring system
+* RUL calculations
+* Cloudflare Tunnel deployment workflow
 
-We are building a portfolio-grade demo of a predictive maintenance + quality
-monitoring system for plastic injection molding machines (IMMs). The audience is
-a manufacturing buyer who will only share real data AFTER seeing a convincing
-prototype. So:
+The component mapping workbench is no longer a separate application.
 
-- Everything in the prototype is synthetic
-- The synthetic data must look and behave like real IMM data
-- The system must be architected so real data can be plugged in later without
-  rewriting the application
+It must become a native module within the Digital Twin Platform.
 
-A separate notebook track is running in parallel on real public datasets
-(NASA C-MAPSS, airtlab quality dataset). That work informs methodology but does
-NOT block this prototype. Treat the notebook as a sibling project, not a
-dependency.
+The existing component-map.detailed.json should be treated as the source of truth for subsystem-to-mesh relationships.
 
-═══════════════════════════════════════════════════════════════════════════════
-WHAT THE DEMO MUST SHOW (the 60-second story)
-═══════════════════════════════════════════════════════════════════════════════
+The platform must consume this mapping automatically.
 
-1. A simulated IMM running continuously, displaying live process curves
-   (cavity pressure, hydraulic pressure, etc.) and per-cycle scalars
-   (cushion, peak pressure, cycle time, etc.)
+====================================================================
+PRIMARY GOAL
+============
 
-2. Per-component health bars (hydraulic, screw/check-ring, heaters, drive,
-   mold) updating each cycle
+Create an enterprise-grade industrial monitoring experience suitable for presentation to manufacturing clients.
 
-3. An RUL prediction for the most-degraded component, with a confidence band
+The application should feel comparable to modern industrial platforms used by:
 
-4. A quality classifier predicting good / waste / acceptable per cycle
+* Siemens
+* Bosch
+* Schneider Electric
+* Rockwell Automation
+* GE Digital
+* ABB
+* PTC ThingWorx
 
-5. Three "Inject fault" buttons (check-ring wear, heater drift, hydraulic pump
-   wear) that visibly cause symptoms within 30–100 cycles
+The design objective is:
 
-6. A 2D twin diagram of the IMM with named regions that change color as the
-   corresponding component's health drops
+"Professional industrial software"
 
-7. A "speedup" mode so 5,000 cycles play out in 60 seconds for demo recording
+NOT:
 
-═══════════════════════════════════════════════════════════════════════════════
-HARD ARCHITECTURAL CONSTRAINTS
-═══════════════════════════════════════════════════════════════════════════════
+"Student dashboard"
 
-* Real-data swap: All data must flow through a DataSource interface with two
-  implementations: SimulatorDataSource (built now) and PLCDataSource (stub,
-  raises NotImplementedError, documented). The frontend, ML, and twin layers
-  must not know which is in use.
+====================================================================
+PHASE 0
+ARCHITECTURE REVIEW
+===================
 
-* Channel taxonomy: Use the locked channel set from Aslantas (2022) and
-  Rousopoulou (2020) — cavity_pressure, hydraulic_injection_pressure,
-  screw_position, cushion_min, hold_pressure_step_1..10, oil_temperature,
-  barrel_zone_temp_1..6, clamp_force, etc. The INFRA agent authors the canonical
-  channels.py from the literature.
+Before implementation:
 
-* No leakage in ML: The simulator's hidden component-health state is NEVER
-  exposed to any model. Models train only on observable signals. RUL models
-  use group-split-by-machine for validation. This is a hard rule.
+Generate:
 
-* 2D twin only for now: A polished SVG or Canvas side-view of an IMM with
-  named regions. Defer 3D. Frontend agent designs the twin so a 3D glTF could
-  swap in later with the same data-binding contract.
+IMPLEMENTATION_PLAN.md
 
-* Single command runs the demo: `make demo` or `python run.py`. No Docker
-  required. SQLite or JSON files for storage. No message broker. No
-  microservices.
+Generate:
 
-* Three agents, parallel safe, file-level lane ownership.
+TASKS.md
 
-═══════════════════════════════════════════════════════════════════════════════
-EXPLICIT NON-GOALS
-═══════════════════════════════════════════════════════════════════════════════
+Generate:
 
-Do NOT include any of these in the plan. If an agent reaches for one, the plan
-should explicitly forbid it:
+ARCHITECTURE.md
 
-- Docker, Kubernetes, docker-compose
-- MQTT, Kafka, RabbitMQ, any message broker
-- TimescaleDB, MinIO, MLflow, Prefect
-- FastAPI auth, JWT, RBAC
-- 3D models, glTF, Three.js, React Three Fiber
-- Microservices (one process, maybe two — sim+web)
-- Retraining pipelines, drift detection, shadow deployment
-- Multi-machine fleet view
-- Cost-aware policy optimization, reinforcement learning
-- Anything described as "production-grade"
+Generate:
 
-═══════════════════════════════════════════════════════════════════════════════
-THE THREE AGENTS
-═══════════════════════════════════════════════════════════════════════════════
+UI_STRATEGY.md
 
-LANE A — SIMULATOR + ML
-  Mission: Synthetic IMM that emits realistic per-cycle curves and scalars
-  with a hidden degradation FSM, plus two trained models (RUL regressor,
-  quality classifier) using only observable signals.
+Generate:
 
-  Owns: src/simulator/, src/ml/, src/datasource/, artifacts/models/,
-        data/synthetic/, tests for those.
+DECISIONS.md
 
-  Consumes from other lanes: channels.py (read-only from contracts/),
-                              schemas (read-only from contracts/)
+Generate:
 
-  Produces: SimulatorDataSource implementing the DataSource interface;
-            two pickled models loadable by name; a script that regenerates
-            training data and retrains both models deterministically.
+RISK_REGISTER.md
 
-LANE B — FRONTEND + 2D TWIN
-  Mission: Single-page app showing live charts, health bars, RUL band,
-  quality prediction, 2D twin, fault-injection buttons.
+Generate:
 
-  Owns: web/, web/src/, web/public/, web/styles/
+DEPLOYMENT.md
 
-  Consumes: contracts/snapshot.schema.json (the JSON the backend pushes);
-            contracts/fault_injection.schema.json (the buttons emit this)
+The implementation plan must be detailed.
 
-  Produces: A working dashboard. Looks intentional — dark theme, considered
-            typography, one accent color. Reads from a local JSON endpoint
-            or WebSocket. Works against mock_snapshot.json from day one.
+Every task must be traceable.
 
-LANE C — INFRA + GLUE + DEMO
-  Mission: Contracts, run scripts, the "fake live loop" connecting simulator
-  to frontend, README, demo recording script, environment setup.
+No implementation should begin before planning artifacts are generated.
 
-  Owns: contracts/, scripts/, docs/, README.md, pyproject.toml or
-        requirements.txt, Makefile, .gitignore
+====================================================================
+SYSTEM ARCHITECTURE
+===================
 
-  Consumes: nothing — INFRA defines the contracts the other lanes depend on,
-            so INFRA must move first.
+Create a modular architecture.
 
-  Produces: All JSON schemas, channels.py, the runner script that loops the
-            simulator and writes snapshot.json (or pushes via WebSocket), the
-            README with a 5-line "what" and a 30-line "how to run", a written
-            60-second demo script with timestamps, a 30-second elevator
-            paragraph.
+Modules:
 
-═══════════════════════════════════════════════════════════════════════════════
-YOUR DELIVERABLES (THIS CONVERSATION)
-═══════════════════════════════════════════════════════════════════════════════
+1. Digital Twin Viewer
+2. Component Mapping Engine
+3. Component Health Engine
+4. RUL Engine
+5. Sensor Visualization Engine
+6. Alert Engine
+7. Analytics Engine
+8. Deployment Module
+9. Collaboration Module
 
-Produce these as separate, clearly delimited markdown artifacts:
+The architecture must support future expansion without refactoring.
 
-────────────────────────────────────────────────────────────────────────────
-ARTIFACT 1 — IMPLEMENTATION_PLAN.md
-────────────────────────────────────────────────────────────────────────────
+====================================================================
+3D DIGITAL TWIN VIEWER
+======================
 
-Structure:
+The 3D model should become a primary experience.
 
-  ## 1. One-paragraph project summary
-  ## 2. Architecture diagram (ASCII) — show DataSource abstraction explicitly
-  ## 3. Repo layout — every directory, who owns it
-  ## 4. The shared contracts
-       - channels.py contents (full list of channel names with units)
-       - snapshot.schema.json (what frontend consumes per tick)
-       - cycle_output.schema.json (what simulator emits per cycle)
-       - fault_injection.schema.json (what buttons emit)
-       - datasource.py interface definition
-  ## 5. Lane A (Simulator+ML) detailed plan
-       - Files to create, in build order
-       - The degradation FSM design (components, curves, symptom maps)
-       - The two models: what they predict, what features they use, how
-         they're trained, how leakage is avoided
-       - Tests required
-       - "Done" criteria, concrete and checkable
-  ## 6. Lane B (Frontend+Twin) detailed plan
-       - Tech stack recommendation (recommend the simplest credible option —
-         lean toward Vite + vanilla TS or React, not Next.js)
-       - Layout sketch
-       - 2D twin design — which components are visible, how they bind to
-         health values, swap-to-3D contract
-       - Tests / visual QA approach
-       - "Done" criteria
-  ## 7. Lane C (Infra+Glue+Demo) detailed plan
-       - Contracts to author first
-       - Glue runner architecture
-       - Demo script (the actual 60-second narration)
-       - README outline
-       - "Done" criteria
-  ## 8. Execution timeline (hours, not weeks)
-       - Hour 0–2: INFRA publishes contracts, others read
-       - Hour 2–6: parallel build
-       - Hour 6–8: first integration (smoke moment)
-       - Hour 8+: polish
-       Be specific. If something will take 30 minutes, say 30 minutes.
-  ## 9. The "first smoke moment" — define it precisely
-       What's the earliest point where simulator data appears in the
-       frontend UI, even with most things stubbed? Front-load this.
-  ## 10. Stubs and assumptions
-       Every place where one lane stubs another lane's output until it
-       exists. Each stub has a kill-by date (when it must be replaced).
-  ## 11. Risk register (5 items max)
-       Specific to this build, not generic project risks.
-  ## 12. What changes when real data arrives
-       Specific list: what code changes, what stays the same.
+Current dashboard allocation is too small.
 
-────────────────────────────────────────────────────────────────────────────
-ARTIFACT 2 — TASKS.md
-────────────────────────────────────────────────────────────────────────────
+Redesign layout.
 
-A markdown task tracker with this structure:
+Viewer should occupy a major portion of the screen.
 
-  # Task Tracker
+Possible layouts:
 
-  Legend: 🔲 todo · 🟡 in-progress · ✅ done · ⛔ blocked
+* Split View
+* Twin Focus Layout
+* Command Center Layout
 
-  ## Lane A — Simulator + ML
-  | ID | Task | Status | Owner | Notes |
-  |----|------|--------|-------|-------|
-  | A1 | ... | 🔲 | sim-agent | |
-  ...
+Choose the best industry-standard approach.
 
-  ## Lane B — Frontend + Twin
-  ...
+The viewer should feel like a digital twin environment.
 
-  ## Lane C — Infra + Glue + Demo
-  ...
+Requirements:
 
-  ## Cross-lane integration points
-  | ID | What | Lanes | Status |
-  |----|------|-------|--------|
-  | X1 | Contracts published, A and B unblocked | C → A,B | 🔲 |
-  | X2 | First snapshot.json reaches frontend | A,C → B | 🔲 |
-  | X3 | Fault button triggers visible symptom in <30 cycles | B → A → B | 🔲 |
-  | X4 | Models trained and integrated | A | 🔲 |
-  | X5 | Full demo recording captured | C | 🔲 |
+* Orbit
+* Pan
+* Zoom
+* Reset camera
+* Fit model
+* Focus component
+* Smooth transitions
+* Cinematic camera movements
+* Persistent state
 
-  ## Update protocol
-  Agents update their own rows only. Status changes go through a commit:
-    git commit -m "[LANE-X] task A3 → 🟡 in-progress"
-  When marking ✅, append a one-line note about what shipped.
+====================================================================
+COMPONENT INTERACTION
+=====================
 
-Generate roughly 8–15 tasks per lane. Number them A1, A2, B1, B2, C1, C2 so
-they're easy to reference.
+The component-map.detailed.json must be used.
 
-────────────────────────────────────────────────────────────────────────────
-ARTIFACT 3 — THREE KICKOFF PROMPTS
-────────────────────────────────────────────────────────────────────────────
+When a subsystem is selected:
 
-One per agent. Each must be:
-  - Self-contained (the agent will paste it into a fresh chat)
-  - Reference the IMPLEMENTATION_PLAN.md and TASKS.md by name
-  - Specify exact lane ownership and forbidden directories
-  - State the "no model layer without observable-signal discipline" rule
-    (Lane A specifically)
-  - State the "no 3D, no Docker, no broker" rule (all lanes)
-  - List the agent's first three concrete tasks from TASKS.md
-  - End with: "State back to me your understanding of your lane, the three
-    tasks you're starting, and any stub you'll need. Then begin."
+Hydraulic
+ScrewCheckRing
+Drive
+Heaters
+Mold
 
-Delimit each kickoff prompt clearly so I can copy them cleanly.
+The corresponding meshes must highlight automatically.
 
-═══════════════════════════════════════════════════════════════════════════════
-QUALITY BAR
-═══════════════════════════════════════════════════════════════════════════════
+Capabilities:
 
-Your plan will be judged on:
+* Hover subsystem
+* Highlight subsystem
+* Click subsystem
+* Focus camera
+* Open subsystem details
 
-1. Could three agents pick this up and not collide? (clear lane boundaries)
-2. Is the "first smoke moment" reachable in under 6 hours of total work?
-3. Can the demo be recorded within 24 hours of execution start?
-4. Does the architecture genuinely support real-data swap, or is that lip
-   service?
-5. Is the ML setup leakage-free, or is it secretly cheating?
-6. Are non-goals explicit enough that an over-eager agent won't drift?
-7. Is every claim in the demo defensible to a domain expert?
+Subsystems should have visual identity.
 
-If you find yourself adding complexity to look thorough, cut it. The user has
-already had this project over-scoped twice. Lean toward less.
+Example:
 
-Now produce ARTIFACT 1, then ARTIFACT 2, then ARTIFACT 3. Stop after the
-three artifacts. Do not begin execution.
+Hydraulic = blue
+ScrewCheckRing = orange
+Drive = green
+Heaters = yellow
+Mold = purple
+
+====================================================================
+COMPONENT HEALTH PANEL
+======================
+
+Current health card design should evolve into a subsystem detail panel.
+
+Example:
+
+Hydraulic selected
+
+Display:
+
+Health Score
+RUL
+Current Status
+Failure Probability
+Maintenance Recommendation
+Sensor Summary
+Trend Direction
+
+The selected component becomes the active context of the dashboard.
+
+Every graph should update accordingly.
+
+====================================================================
+INTELLIGENT TOOLTIPS
+====================
+
+This is a major requirement.
+
+Whenever the user hovers ANYTHING:
+
+Provide context.
+
+Examples:
+
+Health Score:
+
+Show:
+
+* What score means
+* Why score is high or low
+* Expected behavior
+* Interpretation
+
+Graph Point:
+
+Show:
+
+* Exact value
+* Timestamp
+* Trend
+* Meaning
+* Risk interpretation
+
+Sensor Reading:
+
+Show:
+
+* Current value
+* Normal range
+* Warning range
+* Critical range
+* Operational meaning
+
+The platform should explain itself.
+
+A non-technical user should understand the dashboard.
+
+Every visualization should answer:
+
+"What am I seeing?"
+"Is it good or bad?"
+"What should I do?"
+
+====================================================================
+GRAPH SYSTEM
+============
+
+Upgrade graphs.
+
+Requirements:
+
+* Crosshair
+* Hover values
+* Contextual explanations
+* Threshold overlays
+* Warning regions
+* Critical regions
+* Forecast regions
+* Predicted failure markers
+
+Every graph should feel enterprise-grade.
+
+====================================================================
+DIGITAL TWIN INSPECTION MODE
+============================
+
+The original workbench capabilities must remain available.
+
+Create:
+
+Inspection Mode
+
+Features:
+
+* Mesh selection
+* Hierarchy explorer
+* Isolation mode
+* Wireframe mode
+* Transparency mode
+* Search
+* Mapping editor
+
+This should be accessible from the production dashboard.
+
+Power users should be able to inspect internals without leaving the platform.
+
+====================================================================
+COLLABORATIVE REVIEW MODE
+=========================
+
+Support remote review sessions.
+
+Workflow:
+
+Developer machine
+→ Repository
+→ DGX
+→ Cloudflare Tunnel
+
+The application must support:
+
+* Multiple remote viewers
+* Shared review sessions
+* Mapping validation sessions
+
+Assume developers and domain experts may review the same machine remotely.
+
+====================================================================
+DEPLOYMENT WORKFLOW
+===================
+
+Very important.
+
+The DGX deployment must not require retraining.
+
+The application must be deterministic.
+
+All outputs should be persisted.
+
+Store:
+
+* component mappings
+* assignments
+* UI settings
+* thresholds
+* configuration
+
+in files or database.
+
+No manual recreation should be required after cloning.
+
+Developer workflow:
+
+Laptop
+→ Validate
+→ Commit
+→ Push
+
+DGX
+
+→ Pull
+→ Install
+→ Start
+
+System should work immediately.
+
+No repeated setup process.
+
+No repeated mapping process.
+
+No repeated training process.
+
+====================================================================
+VISUAL DESIGN
+=============
+
+The platform should look premium.
+
+Use industry best practices.
+
+Prioritize:
+
+Information density
+Clarity
+Professionalism
+Readability
+
+Avoid:
+
+Consumer-style dashboards
+Gaming aesthetics
+Unnecessary animations
+
+Use animation only when it improves understanding.
+
+====================================================================
+PERFORMANCE
+===========
+
+The platform must remain responsive.
+
+Requirements:
+
+* Smooth camera movement
+* Smooth highlighting
+* Fast filtering
+* Fast subsystem selection
+
+Target:
+
+60 FPS interaction.
+
+====================================================================
+IMPLEMENTATION APPROACH
+=======================
+
+Do not attempt everything at once.
+
+Create:
+
+Phase 1
+Phase 2
+Phase 3
+Phase 4
+Phase 5
+
+Each phase must have:
+
+Objectives
+Tasks
+Acceptance Criteria
+Manual Test Cases
+Deployment Validation
+
+Update TASKS.md continuously.
+
+Mark progress throughout implementation.
+
+Maintain a working application after every phase.
+
+The application should always remain deployable.
+
+Never break working functionality while introducing new features.

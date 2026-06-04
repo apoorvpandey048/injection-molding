@@ -1,6 +1,5 @@
 import { useRef } from "react";
 import {
-  Boxes,
   Crosshair,
   Download,
   Eye,
@@ -90,16 +89,10 @@ export function Toolbar(): React.JSX.Element {
   };
 
   return (
-    <header className="flex items-center gap-1.5 border-b border-panel-border bg-panel px-3 py-2">
-      <div className="mr-2 flex items-center gap-2">
-        <Boxes className="h-5 w-5 text-sky-400" />
-        <div className="leading-tight">
-          <div className="text-sm font-semibold text-zinc-100">Component Mapping Workbench</div>
-          <div className="text-[10px] uppercase tracking-wider text-zinc-500">
-            Injection Molding Machine
-          </div>
-        </div>
-      </div>
+    <header className="flex items-center gap-1.5 border-b border-panel-border bg-panel px-3 py-1.5">
+      <span className="mr-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <ScanEye className="h-3.5 w-3.5 text-sky-400" /> Inspection
+      </span>
 
       <Divider />
 

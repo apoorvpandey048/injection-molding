@@ -1,13 +1,17 @@
-"""Generate docs/PROTOTYPE_OVERVIEW.docx — a complete walkthrough of the prototype."""
+"""Generate docs/PROTOTYPE_OVERVIEW.docx — a complete walkthrough of the
+IMM Digital Twin Platform. Screenshots are read from docs/screenshots/platform/.
+
+Run:  .venv/bin/python scripts/build_overview_doc.py
+"""
 from pathlib import Path
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 ROOT = Path(__file__).resolve().parent.parent
-SHOTS = ROOT / "docs" / "screenshots"
+SHOTS = ROOT / "docs" / "screenshots" / "platform"
 OUT = ROOT / "docs" / "PROTOTYPE_OVERVIEW.docx"
 
 
@@ -34,7 +38,7 @@ def code(doc, text):
     r.font.size = Pt(9)
 
 
-def img(doc, name, caption, width=6.0):
+def img(doc, name, caption, width=6.5):
     path = SHOTS / name
     if not path.exists():
         P(doc, f"[missing screenshot: {name}]", italic=True)
@@ -48,7 +52,6 @@ def img(doc, name, caption, width=6.0):
 
 
 def _shade(cell, hex_color):
-    """Fill a table cell with a solid background color (for palette swatches)."""
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
     shd.set(qn("w:color"), "auto")
@@ -61,23 +64,20 @@ def glossary_entry(doc, term, technical, plain, floor):
     p.add_run(f"{term} — ").bold = True
     p.add_run(technical)
     pl = doc.add_paragraph()
-    r = pl.add_run("In plain English: ")
-    r.bold = True
+    pl.add_run("In plain English: ").bold = True
     pl.add_run(plain)
     fl = doc.add_paragraph()
     r = fl.add_run("On the factory floor: ")
     r.bold = True
     r.italic = True
-    fr = fl.add_run(floor)
-    fr.italic = True
+    fl.add_run(floor).italic = True
     doc.add_paragraph()
 
 
 def palette_table(doc, rows):
     table = doc.add_table(rows=1, cols=3)
     table.style = "Table Grid"
-    hdr = table.rows[0].cells
-    for c, txt in zip(hdr, ("Token", "Swatch", "Hex · purpose")):
+    for c, txt in zip(table.rows[0].cells, ("Token", "Swatch", "Hex · purpose")):
         c.paragraphs[0].add_run(txt).bold = True
     for token, hexv, purpose in rows:
         cells = table.add_row().cells
@@ -86,440 +86,287 @@ def palette_table(doc, rows):
         cells[2].text = f"{hexv} · {purpose}"
 
 
+def subsystem_table(doc):
+    rows = [
+        ("Hydraulic", "#3b82f6", "hydraulic", "Pumps, valves, cylinders, oil circuit", "Inj. pressure, oil temp"),
+        ("Screw & Check Ring", "#f97316", "screw_check_ring", "Screw, non-return ring, barrel, nozzle", "Cushion, cavity pressure"),
+        ("Drive", "#22c55e", "drive", "Motors, gearboxes, servo drive", "Screw RPM, cycle time"),
+        ("Heaters", "#eab308", "heaters", "Barrel heater bands, thermocouples", "Barrel temps, nozzle temp"),
+        ("Mold & Clamp", "#a855f7", "mold", "Platens, cavities, ejector, clamp", "Clamp force, cooling time"),
+    ]
+    table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
+    for c, txt in zip(table.rows[0].cells, ("Subsystem", "Colour", "Backend key", "What it is", "Key sensors")):
+        c.paragraphs[0].add_run(txt).bold = True
+    for label, hexv, key, what, sensors in rows:
+        cells = table.add_row().cells
+        cells[0].text = label
+        _shade(cells[1], hexv)
+        cells[1].paragraphs[0].add_run(hexv).font.size = Pt(8)
+        cells[2].text = key
+        cells[3].text = what
+        cells[4].text = sensors
+
+
 def main():
     doc = Document()
 
     # ---------- Title ----------
-    t = doc.add_heading("Injection-Molding Predictive Maintenance Digital Twin", 0)
+    t = doc.add_heading("IMM Digital Twin Platform", 0)
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub = doc.add_paragraph()
     sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = sub.add_run("Prototype Overview — what was built, how it works, and how to extend it")
-    r.italic = True
+    sub.add_run("Industrial Predictive-Maintenance Platform for Injection-Molding Machines\n"
+                "Prototype Overview — what it is, how it works, and how to demo it").italic = True
 
-    # ---------- Goal ----------
-    H(doc, "1. Goal", 1)
+    # ---------- 1. Executive summary ----------
+    H(doc, "1. Executive summary", 1)
     P(doc,
-      "Decide when exactly to replace an injection-molding machine — neither too early "
-      "(wasted residual life, lost capital) nor too late (catastrophic failure, zero resale "
-      "value). The prototype predicts Remaining Useful Life (RUL) per component, converts that "
-      "into a calendar replacement date and an urgency band, and surfaces it all in a live "
-      "dashboard so an operator can plan interventions component-by-component.")
-    P(doc, "The replacement decision is anchored on three health constants exposed via the API:")
+      "The IMM Digital Twin Platform is an enterprise-grade monitoring environment for injection-"
+      "molding machines. A large, interactive 3-D digital twin sits at the centre of a command-"
+      "centre layout; each of the machine's five monitored subsystems is colour-coded and tinted "
+      "by its live health directly on the model. The platform predicts Remaining Useful Life (RUL) "
+      "per subsystem, converts it into calendar replacement dates and urgency, and surfaces it all "
+      "with charts and tooltips that explain themselves — so a non-specialist can read the machine "
+      "and know what to do.")
+    P(doc, "The design target is professional industrial software comparable to platforms from "
+           "Siemens, Bosch, Schneider Electric, Rockwell, GE Digital, ABB and PTC ThingWorx — not a "
+           "consumer dashboard.")
+    img(doc, "01_operations_overview.png",
+        "Command Center — Operations mode. The 3-D twin is the hero; the left rail shows live "
+        "per-subsystem health; the right panel is the machine-overview context.")
+
+    P(doc, "Two modes, one application:", bold=True)
+    bullet(doc, "Operations — live monitoring: health-tinted twin, subsystem rail, contextual detail "
+                "panel, enterprise charts, and self-explaining tooltips.")
+    bullet(doc, "Inspection — the full mesh-level engineering workbench folded in as a native module: "
+                "hierarchy, isolate, wireframe / x-ray, search, and a component-mapping editor.")
+
+    # ---------- 2. Architecture ----------
+    H(doc, "2. Architecture", 1)
+    P(doc, "The platform is a single-page application served by one Python (aiohttp) server. "
+           "A WebSocket streams a machine snapshot every cycle; a small REST surface handles "
+           "commands and persists configuration and the component map to files. Nine modules:")
+    for n, name, role in [
+        ("1", "Digital Twin Viewer", "R3F canvas, camera (orbit/pan/zoom/fit/focus/reset, cinematic transitions), lighting, outline FX"),
+        ("2", "Component Mapping Engine", "classifies meshes → subsystems (spatial + name hints); loads/persists the component map"),
+        ("3", "Component Health Engine", "per-subsystem health, status band and trend from the live snapshot"),
+        ("4", "RUL Engine", "per-subsystem remaining-useful-life, urgency and forecast band"),
+        ("5", "Sensor Visualization Engine", "scalar / curve channels mapped to subsystems, with adaptive threshold envelopes"),
+        ("6", "Alert Engine", "machine-state banner, fault list, prioritised 'act on this first'"),
+        ("7", "Analytics Engine", "trends, forecast regions, predicted-failure markers, KPIs"),
+        ("8", "Deployment Module", "config + threshold + map persistence, deterministic boot"),
+        ("9", "Collaboration Module", "shared review sessions via URL state, tunnel-aware"),
+    ]:
+        bullet(doc, f"{n}. {name} — {role}.")
+    P(doc, "The five monitored subsystems and how they bind to the backend and the sensors:")
+    subsystem_table(doc)
+    P(doc, "Data contract (unchanged from the underlying predictive-maintenance engine): the snapshot "
+           "carries cycle index, per-component health [0..1], per-component RUL quantiles "
+           "(p10/p50/p90) + replacement date + urgency, a 3-class quality prediction, 14 scalar and "
+           "5 curve sensor channels, and the latched machine state.")
+
+    # ---------- 3. Operations mode ----------
+    H(doc, "3. Operations mode", 1)
+
+    H(doc, "3.1 The Subsystem Rail", 2)
+    P(doc, "The left rail lists the five subsystems, each with its identity colour, a live health bar, "
+           "status band (Healthy / Watch / Critical / Failed), trend arrow and replacement horizon. "
+           "Hovering a subsystem highlights its meshes on the twin and opens an explanation; clicking "
+           "it selects the subsystem, flies the camera in, and makes the right panel that subsystem's "
+           "live detail. A 'Machine health' rollup at the bottom names the worst component.")
+    img(doc, "02_rail_tooltip.png",
+        "Hovering a rail item highlights its region on the 3-D model and opens a What / Reading / "
+        "Action explanation.")
+
+    H(doc, "3.2 Subsystem selection — the active context", 2)
+    P(doc, "Selecting any subsystem (from the rail or by clicking it on the 3-D model) ghosts the rest "
+           "of the machine, frames the camera on the selected region, shows a 'Viewing ·' badge for "
+           "orientation, and turns the right panel into that subsystem's detail: a health ring, RUL "
+           "(p50 cycles + calendar horizon), failure probability, status, trend, a maintenance "
+           "recommendation, an RUL-forecast chart, a health-trend chart, and a live sensor summary.")
+    img(doc, "03_select_hydraulic.png", "Hydraulic selected — base/power-pack region highlighted; full live detail panel.")
+    img(doc, "05_select_drive.png", "Drive selected — the central drive region; the camera reframes to it.")
+    img(doc, "07_select_mold.png", "Mold & Clamp selected — the clamp end; per-subsystem charts update to Mold.")
+
+    H(doc, "3.3 Enterprise charts", 2)
+    P(doc, "Every chart carries the same enterprise toolkit: a crosshair with hover values, shaded "
+           "warning / critical threshold regions, a forecast region with the p10–p90 uncertainty band "
+           "around the p50, and a predicted-failure marker. The RUL forecast projects the subsystem's "
+           "health decline to its failure threshold; the crosshair reads out the value, the calendar "
+           "horizon and the risk band at any point.")
+    img(doc, "09_forecast_crosshair.png",
+        "RUL Forecast crosshair — '+1.5k cycles · ~39 days / p10–p90 band / p50 health 37% (watch)'.")
+
+    H(doc, "3.4 The self-explaining platform", 2)
+    P(doc, "Intelligent tooltips are a first-class feature. Hovering anything answers three questions: "
+           "What am I seeing? · Is it good or bad? · What should I do? The judgement is derived from the "
+           "live value and its threshold band, so the words always match the numbers.")
+    img(doc, "08_kpi_tooltip.png", "A metric tooltip — defines RUL and interprets the current reading.", width=6.5)
+    img(doc, "10_sensor_tooltip.png",
+        "A sensor tooltip — value, normal direction, band, and the operational meaning (with a live "
+        "trend sparkline and normal envelope).")
+
+    H(doc, "3.5 Demonstration controls & settings", 2)
+    P(doc, "Demo controls (inject a fault per subsystem, accelerate the clock) are fenced and clearly "
+           "labelled as not real machine controls. Settings expose the production rate (cycles/day) "
+           "used to turn predicted cycles into calendar dates; the value persists to disk.")
+    img(doc, "11_demo_controls.png", "Demonstration controls — fault buttons per subsystem + speed, clearly fenced.", width=6.0)
+    img(doc, "12_settings.png", "Settings — production rate, self-explaining and persisted.", width=5.5)
+
+    # ---------- 4. Degradation & failure ----------
+    H(doc, "4. Degradation and failure behaviour", 1)
+    P(doc, "Inject a fault (or connect a real machine) and the story unfolds live and on the geometry. "
+           "As a subsystem wears, its region on the 3-D model shifts green → amber → red, the rail and "
+           "machine state escalate Running → Warning → Critical, the RUL forecast collapses toward the "
+           "failure line, predicted quality degrades, and alerts appear. When a component crosses its "
+           "failure threshold the machine latches FAILED with a banner naming the part and the cycle.")
+    img(doc, "13_state_warning.png", "Warning — the Hydraulic base shifts amber; state = Warning.")
+    img(doc, "14_state_critical.png", "Critical — the region reddens further; quality flips toward WASTE.")
+    img(doc, "15_state_failed.png", "Failed — the region is red, a banner names the failed part and cycle, alerts raised.")
+
+    # ---------- 5. Component mapping engine ----------
+    H(doc, "5. Component Mapping Engine", 1)
+    P(doc, "The platform binds live health to geometry through a component map (subsystem → mesh ids) "
+           "built from the COLLADA model. Because the model's ~660 meshes are mostly generically named, "
+           "the classifier combines two deterministic signals: name hints for the few descriptive nodes "
+           "(hopper, platen, oil_cooler, …), and spatial zones for the rest — each mesh centroid is "
+           "projected onto the machine's principal axis and vertical and mapped to the region that best "
+           "matches a real injection-molding layout (power pack at the base, screw/heaters/drive across "
+           "the top, mold at the clamp end). Structure (frames, guards, panels, fasteners) is routed to "
+           "a neutral 'Structure' bucket so monitored assets stand out.")
+    P(doc, "The result is a complete, reproducible partition committed as the source of truth at "
+           "public/map/component-map.detailed.json (every mesh in exactly one subsystem). On boot the "
+           "platform loads this file; if it is ever absent it derives the map at load time and persists "
+           "it back, so the mapping never needs to be recreated. A domain expert can refine it in "
+           "Inspection mode and re-export.")
+    code(doc, "counts (this build): Hydraulic 219 · Screw&CheckRing 111 · Drive 57 · Heaters 71 · "
+              "Mold 184 · Structure 18   (660 meshes total)")
+
+    # ---------- 6. Inspection mode ----------
+    H(doc, "6. Inspection mode", 1)
+    P(doc, "The original mapping workbench is folded in as a native module — power users inspect "
+           "internals without leaving the platform, sharing one scene and camera with Operations.")
+    img(doc, "16_inspection_overview.png",
+        "Inspection — hierarchy explorer (left), the model in materials view, inspector + mapping "
+        "editor (right) with live subsystem counts.")
+    bullet(doc, "Mesh selection — click any mesh (or a hierarchy node); the inspector shows its name, "
+                "material, triangle/vertex counts, parent and subsystem assignment.")
+    bullet(doc, "Isolation — hide everything except the selection to study a part in context.")
+    bullet(doc, "Wireframe / X-ray / Edges — see internal structure and overlapping geometry.")
+    bullet(doc, "Search — filter the hierarchy by component or material name.")
+    bullet(doc, "Mapping editor — assign meshes to subsystems (keys 1–5), reset, export the detailed "
+                "map and persist it back to the server.")
+    img(doc, "17_inspection_mesh_selected.png", "A mesh selected — the inspector and hierarchy reflect it; outline highlight.")
+    img(doc, "18_inspection_wireframe.png", "Wireframe — internal structure of the machine.")
+    img(doc, "20_inspection_isolate.png", "Isolation — only the selected part is shown; the inspector details it.")
+
+    # ---------- 7. Collaboration ----------
+    H(doc, "7. Collaborative review", 1)
+    P(doc, "The current view — mode and selected subsystem — is encoded in the URL hash, so a link "
+           "reproduces a colleague's exact view. Combined with the one-command public tunnel, a "
+           "developer and a domain expert can review the same live machine remotely:")
+    code(doc, "https://<your-tunnel>.trycloudflare.com/#mode=operations&sub=Mold")
+    P(doc, "Everyone streams the same live snapshots from the one backend; no extra infrastructure is "
+           "required for a shared review session.")
+
+    # ---------- 8. Responsive / visual design ----------
+    H(doc, "8. Visual design", 1)
+    P(doc, "A dark, single-theme industrial palette. The five subsystem hues are the only saturated "
+           "colours in the chrome, so a lit subsystem reads instantly; a continuous green→amber→red "
+           "scale encodes live health on the model and in the gauges. Numbers are set in a monospace "
+           "with tabular figures so streaming values don't jitter. The layout is desktop-optimised and "
+           "keeps the 3-D viewer the dominant column from 1280 px up.")
+    palette_table(doc, [
+        ("background", "#0a0e16", "app background"),
+        ("surface", "#121826", "cards / panels"),
+        ("elevated", "#1b2433", "header, dialogs, hover"),
+        ("border", "#263043", "hairline borders"),
+        ("text primary", "#e8edf4", "headings, key numbers"),
+        ("accent", "#38bdf8", "interactive chrome, focus"),
+        ("success", "#34d399", "healthy / good / monitor"),
+        ("warning", "#fbbf24", "watch / acceptable"),
+        ("critical", "#f4554e", "critical / waste"),
+        ("Hydraulic", "#3b82f6", "subsystem identity"),
+        ("Screw&CheckRing", "#f97316", "subsystem identity"),
+        ("Drive", "#22c55e", "subsystem identity"),
+        ("Heaters", "#eab308", "subsystem identity"),
+        ("Mold", "#a855f7", "subsystem identity"),
+    ])
+    img(doc, "21_responsive_1280.png", "The layout at 1280 px — the viewer stays the dominant column.")
+
+    # ---------- 9. Deployment ----------
+    H(doc, "9. Deterministic deployment (clone → run → share)", 1)
+    P(doc, "The platform is built to come up identically on any machine — laptop or DGX — with no "
+           "manual recreation and no repeated mapping or training.")
+    P(doc, "Committed to the repository (survives a clone):", bold=True)
+    bullet(doc, "All code, the 3-D model (model.dae) and its textures.")
+    bullet(doc, "The component map — public/map/component-map.detailed.json (source of truth).")
+    bullet(doc, "Trained ML models (artifacts/models/*.pkl) so no retraining is needed.")
+    bullet(doc, "Default platform config (config/platform.json) and the deterministic simulator seed.")
+    P(doc, "Runtime persistence is to files, written atomically (temp + rename) and validated on load. "
+           "The server serves the platform build by default; setting WEB_DIR=web/dist rolls back to the "
+           "legacy dashboard instantly.")
+    P(doc, "On the DGX:", bold=True)
     code(doc,
-         "FAILURE_THRESHOLD    = 0.20   # below this: imminent failure, do not run\n"
-         "OPTIMAL_REPLACE_LOW  = 0.35   # sweet-spot lower bound\n"
-         "OPTIMAL_REPLACE_HIGH = 0.42   # sweet-spot upper bound — best resale window")
-    P(doc, "Replace when median predicted health enters [0.35, 0.42]. Above 0.42 → keep running. "
-           "Below 0.20 → already too late.")
+         "git clone <repo> && cd injection-molding\n"
+         "./demo.sh            # build + serve at http://localhost:8000\n"
+         "./demo.sh --tunnel   # also print a temporary public https link (Cloudflare)\n"
+         "#   relaunch any time with the same command; first run does one-time setup only")
+    P(doc, "demo.sh is idempotent: it creates the venv, trains models only if missing, builds the "
+           "platform frontend only if missing, then serves; --tunnel adds a shareable public URL for a "
+           "remote investor demo.")
 
-    # ---------- What was built ----------
-    H(doc, "2. What was built", 1)
-    P(doc, "End-to-end working prototype, intentionally minimal stack:")
-    bullet(doc, "Physics-style cycle simulator with hidden component health (5 components) and injectable faults.")
-    bullet(doc, "DataSource abstraction — same interface for sim and real PLC. Swap one class to go live.")
-    bullet(doc, "Cycle-feature extractor (49 observable features per shot, no hidden state leakage).")
-    bullet(doc, "Per-component RUL: for each of the 5 components, three quantile regressors (p10/p50/p90). "
-                "Plus a calibrated 3-class quality classifier (good / acceptable / waste).")
-    bullet(doc, "Urgency engine: converts each component's predicted RUL (cycles) into a calendar "
-                "replacement date and an urgency band (critical / imminent / schedule / monitor), "
-                "driven by a configurable cycles-per-day setting.")
-    bullet(doc, "aiohttp WebSocket server streaming live cycles + predictions; REST endpoints for "
-                "fault injection, sim speed, and runtime settings (/api/settings).")
-    bullet(doc, "Modern React UI (Vite + React 18 + Tailwind + shadcn/ui + Recharts + lucide): radial "
-                "component gauges, per-component detail dialogs, RUL band chart, quality card, live "
-                "process charts, fault controls.")
-    bullet(doc, "Optional interactive 3-D digital twin of the machine (Three.js, Draco-compressed glb), "
-                "feature-flagged on via VITE_ENABLE_3D.")
-
-    H(doc, "2.1 Component map", 2)
-    code(doc,
-         "src/simulator/   machine.py, profiles.py, degradation.py (FSM), faults.py\n"
-         "src/datasource/  simulator_source.py, plc_source.py  (same interface)\n"
-         "src/ml/          features.py, splits.py, train_quality.py, train_rul.py,\n"
-         "                 predict.py, urgency.py\n"
-         "scripts/         generate_training_data.py, retrain_models.py,\n"
-         "                 capture_screenshots.py, build_overview_doc.py\n"
-         "run.py           aiohttp server — WS stream, /api/fault, /api/speedup,\n"
-         "                 /api/settings, static frontend + /models + /draco\n"
-         "web/             Vite + React (TS strict). components/: ComponentGauge,\n"
-         "                 ComponentGrid, RULBand, QualityCard, ProcessCharts,\n"
-         "                 FaultButtons, Twin2D, Twin3D, ui/ (shadcn primitives)\n"
-         "web/public/      models/injection_machine.glb (Draco), draco/ (decoder)")
-
-    # ---------- Live demo ----------
-    H(doc, "3. The live demo", 1)
-    P(doc, "Healthy machine streaming live cycles: five radial gauges show per-component health and "
-           "days-until-replacement, the RUL band sits far from the failure threshold, quality is GOOD.")
-    img(doc, "01_dashboard.png", "Full dashboard — live cycles, per-component gauges, RUL band, quality, process curves")
-
-    P(doc, "After clicking a fault (e.g. Hydraulic Pump Wear): the affected component's gauge swings "
-           "toward critical, health drops, the RUL band collapses toward the failure threshold, and "
-           "quality degrades. This proves the simulator → features → ML → UI pipeline reacts end-to-end.")
-    img(doc, "03_with_fault.png", "Fault injected — component health drops, RUL shrinks, quality degrades")
-
-    # ---------- UI semantics ----------
-    H(doc, "4. How to read the UI", 1)
-
-    H(doc, "4.1 Component gauges (Component Health & RUL)", 2)
-    P(doc, "Five radial gauges, one per component (hydraulic, screw / check ring, heaters, drive, mold). "
-           "The ring fill encodes health; the ring color encodes urgency band — red = critical (< 7 days), "
-           "amber = imminent (7–30), cyan = schedule (30–90), green = monitor (> 90). Center text shows "
-           "days until replacement. Click any gauge to open its detail dialog.")
-
-    H(doc, "4.2 Component detail dialog", 2)
-    img(doc, "02_gauge_dialog.png", "Per-component dialog — p10/p50/p90, RUL band, replacement date, urgency", width=5.0)
-    P(doc, "The dialog shows that component's RUL quantiles (p10 / p50 / p90 in cycles), a component-scoped "
-           "RUL band with the failure-threshold reference, the calendar replacement date, days remaining, "
-           "and a (stub) Schedule-maintenance action.")
-
-    H(doc, "4.3 RUL forecast band", 2)
-    P(doc, "Recharts area band for the worst component (lowest median RUL). Three quantiles from three models:")
-    bullet(doc, "p50 (line) — median estimate, the headline number.")
-    bullet(doc, "p10 / p90 (band) — pessimistic / optimistic bounds (10 % tails).")
-    P(doc, "A failure-threshold reference line and the resale sweet-spot window are drawn for context. "
-           "The footer names the worst component and its replace-by date.")
-
-    H(doc, "4.4 Quality card", 2)
-    P(doc, "Calibrated 3-class prediction per shot: GOOD / ACCEPTABLE / WASTE with probability bars. "
-           "Probabilities are calibrated (CalibratedClassifierCV) so they can be thresholded directly — "
-           "e.g. alert when P(waste) > 0.3 for three consecutive shots.")
-
-    H(doc, "4.5 Process charts", 2)
-    P(doc, "Live cavity-pressure, injection-pressure, screw-position / velocity, and nozzle-temperature "
-           "traces from the most recent cycle (Recharts line charts). Models consume engineered cycle "
-           "features, not the raw curves.")
-
-    H(doc, "4.6 Fault buttons + controls", 2)
-    P(doc, "Click a fault button (Check Ring Wear, Heater Drift, Hydraulic Pump Wear) to inject that "
-           "failure mode; the button turns red while active, click again to clear. The speed slider scales "
-           "sim wall-clock for demos / fast degradation. The header shows machine id, cycle counter, and a "
-           "green WebSocket-health dot.")
-
-    H(doc, "4.7 Digital twin", 2)
-    P(doc, "Default build: a lightweight 2-D schematic twin. With the 3-D feature flag enabled, the same "
-           "card becomes an interactive 3-D model of the machine (drag to orbit, scroll to zoom, idle "
-           "auto-rotate). See section 6.")
-    img(doc, "app_3d_panel.png", "Dashboard with the interactive 3-D digital twin enabled (top-left card)")
-
-    # ---------- Under the hood ----------
-    H(doc, "5. How it works under the hood", 1)
-
-    H(doc, "5.1 Simulator", 2)
-    P(doc, "Each cycle the machine produces cavity-pressure / velocity / screw-position curves. A hidden "
-           "finite-state machine (degradation.py) advances each component's true health, accelerated by "
-           "injected faults. The FSM state is private — used only to label training rows, never as a feature.")
-
-    H(doc, "5.2 Feature extraction", 2)
-    P(doc, "features.py turns each raw cycle into 49 scalar features: peak pressures, areas under the curve, "
-           "time-to-peak, slopes, ratios, temperature stats, etc. These are the only inputs to the models. "
-           "An AST-level lint test forbids features.py from importing src.simulator.* — a hard guard against "
-           "leaking hidden state into features.")
-
-    H(doc, "5.3 Models (per-component RUL + quality)", 2)
-    bullet(doc, "RUL: for EACH of the 5 components, 3 GradientBoostingRegressors with quantile loss "
-                "(alpha = 0.1, 0.5, 0.9). Artifact shape: {components: {<comp>: {models, feature_cols, val_scores}}}.")
-    bullet(doc, "Quality: CalibratedClassifierCV(GradientBoostingClassifier) — 3 classes, calibrated probabilities.")
-    bullet(doc, "Validation: GroupKFold by machine_id — a machine's cycles are never split across train/val.")
-    bullet(doc, "Calibration gate: a held-out test asserts [p10, p90] coverage >= 70 % per component.")
-    bullet(doc, "No-leakage: neither head may use hidden FSM health nor the RUL target columns "
-                "(rul_*_cycles) as features — enforced in both trainers.")
-    P(doc, "Note on per-component val scores: because an un-faulted component's RUL is essentially "
-           "(0.8 / base_wear) − elapsed_cycles, the per-component targets are affine-equivalent (same shape, "
-           "different offset). Quantile pinball loss is invariant to that additive offset once learned, so the "
-           "per-component pinball scores come out nearly identical — this is a property of the simulator's "
-           "design, not a training bug; predicted RUL ranges still differ correctly per component.")
-    P(doc, "Predictor (predict.py) loads the per-component artifact, returns rul_per_component (p10/p50/p90 "
-           "+ replacement_date + urgency for each component) plus a back-compat top-level rul block for the "
-           "worst component. Quantile crossings from the independent heads are absorbed by sorting.")
-
-    H(doc, "5.4 Replacement dates + urgency", 2)
-    P(doc, "urgency.py is pure functions:")
-    code(doc,
-         "cycles_to_date(cycles, cycles_per_day, now) -> date\n"
-         "classify(days) -> 'critical' (<7) | 'imminent' (7-30) | 'schedule' (30-90) | 'monitor' (>=90)")
-    P(doc, "cycles_per_day is a runtime setting (default 40, adjustable live in the Settings drawer) "
-           "read/updated via GET/POST /api/settings and echoed in every snapshot's config block; the "
-           "predictor uses it to turn cycles into dates. It is kept low relative to the simulator's "
-           "deliberately short component lifespans (~4k–13k cycles to the failure line) so a healthy "
-           "machine reads schedule/monitor rather than critical.")
-
-    H(doc, "5.5 Serving", 2)
-    P(doc, "run.py launches an aiohttp app. On each incoming cycle it extracts features, calls "
-           "predict.predict(cycles_per_day=...), and broadcasts the snapshot over WebSocket to all browser "
-           "clients. REST: /api/fault, /api/speedup, /api/settings. Static: the built frontend plus /models "
-           "and /draco (needed by the 3-D twin). If model artifacts are missing the server still runs — the "
-           "UI shows raw cycles with a per-cycle FSM fallback for RUL.")
-
-    # ---------- 3D twin ----------
-    H(doc, "6. The 3-D digital twin", 1)
-    P(doc, "Optional, feature-flagged interactive 3-D model of the machine.")
-    img(doc, "model_preview.png", "The Draco-compressed injection-machine model (350 KB)", width=5.0)
-    bullet(doc, "Source: Trimble 3D Warehouse model. Its General Model License permits embedding in a "
-                "larger 'Combined Work' and format conversion, requires no attribution; only standalone "
-                "redistribution is barred (N/A here). License analysis: docs/3D_LICENSE.md.")
-    bullet(doc, "Pipeline: .dae (8.7 MB) -> glb via trimesh -> gltf-transform optimize "
-                "(dedup/join/weld/Draco/WebP) -> 350 KB (307 KB gzipped). Output is committed at "
-                "web/public/models/injection_machine.glb.")
-    bullet(doc, "Twin3D.tsx: plain Three.js + GLTFLoader + DRACOLoader (decoder served from /draco/) + "
-                "OrbitControls; bbox auto-fit, ResizeObserver, full dispose-on-unmount.")
-    bullet(doc, "Enable with VITE_ENABLE_3D=true at build/dev time; the Digital Twin card then renders "
-                "Twin3D instead of the 2-D schematic. Off by default (no three.js model fetch).")
-    bullet(doc, "Live per-component binding is deferred: the model's nodes have only generic names "
-                "(group_*, instance_*), so health is shown via the gauges, not bound to meshes. Binding "
-                "would require re-authoring the model with semantic node names.")
-
-    # ---------- Reproducibility / cloning ----------
-    H(doc, "7. Reproducibility — cloning to a new machine (e.g. DGX)", 1)
-    P(doc, "What is tracked in the source tree and survives a clone:", bold=True)
-    bullet(doc, "All code (src/, scripts/, run.py, tests/, web/src/).")
-    bullet(doc, "3-D assets: web/public/models/injection_machine.glb and web/public/draco/* "
-                "(NOT gitignored) — the twin works after clone with no re-conversion.")
-    bullet(doc, "The original 3-D source archive web/public/models/injection+machine.zip (re-conversion is reproducible).")
-    bullet(doc, "Dependency manifests: pyproject.toml (Python) and web/package.json + package-lock.json (JS, incl. three).")
-    P(doc, "What is gitignored and must be regenerated after clone:", bold=True)
-    bullet(doc, "Python venv (.venv/) and node_modules/ — reinstall (see section 8).")
-    bullet(doc, "Training data (data/, *.parquet) and ML artifacts (artifacts/, *.pkl) — regenerate via `make train`.")
-    P(doc, "Notes:", bold=True)
-    bullet(doc, "Project is not yet a git repo; when you git init + add, ensure the binary 3-D assets under "
-                "web/public/ are committed (they are not ignored, so a normal `git add` includes them).")
-    bullet(doc, "Retraining is parallelized: train_rul/train_quality accept n_jobs (retrain_models.py uses "
-                "5/3). On a many-core box (DGX) the full retrain is comfortably fast.")
-    bullet(doc, "trimesh/pycollada (3-D conversion) and playwright (screenshots) are dev-only; not needed at "
-                "runtime because the glb is already committed.")
-
-    # ---------- How to run ----------
-    H(doc, "8. How to run it", 1)
-    code(doc,
-         "python -m venv .venv && source .venv/bin/activate\n"
-         "pip install -e \".[dev]\"                        # deps from pyproject.toml\n"
-         "python scripts/generate_training_data.py        # synthetic cycles across machines\n"
-         "python scripts/retrain_models.py                # writes artifacts/models/* (parallel)\n"
-         "# build the frontend:\n"
-         "cd web && npm install && npm run build && cd ..\n"
-         "#   (3-D twin: VITE_ENABLE_3D=true npm run build)\n"
-         "python run.py                                   # serves the app (default PORT 8000)\n"
-         "#   open http://localhost:8000  — try fault buttons, watch RUL + quality react")
-
-    # ---------- Constraints ----------
-    H(doc, "9. Hard architectural rules (do not violate)", 1)
-    P(doc, "These constraints protect model integrity or keep the prototype shippable on a single laptop:")
-    bullet(doc, "Hidden component-health state is NEVER exposed to any model; models train only on observable signals.")
-    bullet(doc, "RUL target columns (rul_*_cycles) are never used as features (enforced in both trainers).")
-    bullet(doc, "RUL models use group-split-by-machine for validation — no cross-machine leakage.")
-    bullet(doc, "src/ml/features.py must not import from src/simulator/* — enforced by an AST lint test.")
-    bullet(doc, "Held-out [p10, p90] coverage must stay >= 70 % per component (calibration test).")
-    P(doc, "Scope guardrails (deliberately out of scope): Docker/K8s, message brokers (MQTT/Kafka), "
-           "TimescaleDB/MinIO/MLflow/Prefect, auth/JWT/RBAC, microservices, fleet view, RL, drift "
-           "detection, and anything described as 'production-grade'. (Note: an optional decorative 3-D "
-           "twin IS now included and license-cleared — see section 6.)")
-
-    # ======================================================================
-    #  Appended for the visual-polish + correctness iteration (V1–V5)
-    # ======================================================================
-
-    # ---------- Glossary ----------
+    # ---------- 10. Glossary ----------
     H(doc, "10. Glossary — plain English", 1)
-    P(doc, "Every technical term on the dashboard, translated. Each entry: one technical "
-           "sentence, one plain sentence, and one factory-floor analogy.")
-
-    glossary_entry(doc, "RUL (Remaining Useful Life)",
-        "The number of production cycles a component is predicted to survive before its true "
-        "health crosses the failure threshold.",
-        "How much life the part has left, counted in shots.",
-        "Like an oil-life gauge in a car — but counting molded parts instead of miles.")
-    glossary_entry(doc, "p10 / p50 / p90 quantile",
-        "Three points on the predicted RUL distribution: the model estimates a 10 %, 50 %, and "
-        "90 % chance the true RUL falls below each value.",
-        "A pessimistic, a most-likely, and an optimistic estimate of remaining life.",
-        "Like a forecast: 'most likely 50k more shots, but could be as few as 10k or as many as 90k.'")
-    glossary_entry(doc, "Calibration",
-        "Post-processing (CalibratedClassifierCV) that makes the model's reported probabilities "
-        "match real-world frequencies, so a stated '70 %' really happens about 70 % of the time.",
-        "Making the confidence numbers honest.",
-        "If the card says '30 % chance of a bad part', roughly 3 of every 10 such shots really are bad.")
-    glossary_entry(doc, "GroupKFold",
-        "A cross-validation split that keeps all cycles from one machine entirely in either "
-        "training or validation — never both.",
-        "Testing the model on machines it has never seen, not just new shots from familiar machines.",
-        "Proving the model works on a brand-new press, not only the few it learned on.")
-    glossary_entry(doc, "Urgency band",
-        "A bucket (critical / imminent / schedule / monitor) derived from days-until-replacement: "
-        "<7, 7–30, 30–90, ≥90.",
-        "A traffic-light label for how soon to act on a part.",
-        "Red = order the part now; green = check again next month.")
-    glossary_entry(doc, "Replacement date",
-        "The calendar date the predicted p50 RUL runs out, computed as RUL cycles ÷ cycles-per-day.",
-        "The day to put this part on the maintenance calendar.",
-        "'Replace the hydraulic pump by June 5' — something a scheduler can act on.")
-    glossary_entry(doc, "Failure threshold",
-        "The health value (0.20) below which a component is considered failed; the machine then "
-        "latches into a FAILED state.",
-        "The point where the part is too worn to trust.",
-        "Like a brake-pad wear line — past it, stop the press.")
-    glossary_entry(doc, "Sweet spot",
-        "The resale-optimal health window [0.35, 0.42] where replacing recovers the most residual "
-        "and resale value.",
-        "The best time to replace — not too early, not too late.",
-        "Trade the press while it still has resale value, before it becomes scrap.")
-    glossary_entry(doc, "Fault injection",
-        "A demo control that ramps extra wear pressure into a component's hidden FSM to simulate a "
-        "developing fault.",
-        "A test button that fakes a part going bad.",
-        "Like a trainer tripping a sensor to check the alarm catches it — for demonstration only.")
     glossary_entry(doc, "Digital twin",
-        "A live software model of the machine driven by the same data stream — here a 2-D schematic, "
-        "or an optional interactive 3-D model.",
-        "A virtual copy of the machine that mirrors its current condition.",
-        "A dashboard stand-in of your press that lights up where it hurts.")
+        "A live software model of the machine driven by the same data stream — here an interactive 3-D "
+        "model tinted by each subsystem's real-time health.",
+        "A virtual copy of the press that lights up where it hurts.",
+        "A dashboard stand-in of your machine that shows condition on the actual geometry.")
+    glossary_entry(doc, "Subsystem",
+        "One of five monitored asset groups (Hydraulic, Screw & Check Ring, Drive, Heaters, Mold & "
+        "Clamp), each mapped to a region of the model and a set of sensors.",
+        "A major part of the machine that wears and gets replaced as a unit.",
+        "The pump pack, the screw, the motor, the heaters, the mold — the things you actually service.")
+    glossary_entry(doc, "RUL (Remaining Useful Life)",
+        "The predicted number of production cycles a subsystem will survive before its health crosses "
+        "the failure threshold.",
+        "How much life the part has left, counted in shots.",
+        "Like an oil-life gauge — but counting molded parts instead of miles.")
+    glossary_entry(doc, "p10 / p50 / p90",
+        "Three points on the predicted RUL distribution — a pessimistic, most-likely and optimistic "
+        "estimate; the band on the forecast chart.",
+        "A best-case, likely, and worst-case estimate of remaining life.",
+        "'Most likely 2,000 more shots, but could be fewer or more' — shown as the shaded band.")
+    glossary_entry(doc, "Urgency band",
+        "A bucket (critical / imminent / schedule / monitor) derived from days-until-replacement.",
+        "A traffic-light label for how soon to act on a part.",
+        "Red = order it now; green = check again next month.")
     glossary_entry(doc, "Machine state",
-        "A ground-truth status (running / warning / critical / failed) derived from the worst "
-        "component's true health — distinct from the ML-predicted urgency band.",
+        "A ground-truth status (Running / Warning / Critical / Failed) from the worst subsystem's true "
+        "health — distinct from the ML-predicted urgency.",
         "The overall traffic-light for the whole press, right now.",
         "Green = making good parts; red FAILED = stopped, reset to continue.")
+    glossary_entry(doc, "Component map",
+        "The file that maps each mesh of the 3-D model to a subsystem, so live health can tint the "
+        "right geometry.",
+        "The link between the picture of the machine and the data about it.",
+        "What makes the mold end light up purple and the pump pack light up blue.")
+    glossary_entry(doc, "Fault injection",
+        "A demo control that ramps extra wear into a subsystem to simulate a developing fault.",
+        "A test button that fakes a part going bad.",
+        "Like a trainer tripping a sensor to prove the alarm catches it — demonstration only.")
 
-    # ---------- Reading the dashboard at a glance ----------
-    H(doc, "11. Reading the dashboard at a glance", 1)
-    img(doc, "dashboard_annotated.png", "The dashboard with numbered callouts (see below)")
-    bullet(doc, "1  Machine-state badge — the overall press status at a glance (Running/Warning/Critical/Failed).")
-    bullet(doc, "2  Live cycle counter — shots produced this run; returns to 0 after a Reset.")
-    bullet(doc, "3  Connection indicator — green 'Live' means the data stream is healthy.")
-    bullet(doc, "4  Component gauges — health % (large), days-to-replace, and urgency for each of the five parts.")
-    bullet(doc, "5  RUL forecast band — predicted remaining life (cycles) of the worst part, with the red failure line.")
-    bullet(doc, "6  Worst-component footer — which part to act on first, and its replace-by date or status.")
-    bullet(doc, "7  Quality card — the predicted class (good / acceptable / waste) of the most recent shot.")
-    bullet(doc, "8  Reset · Settings · Demo controls — reset to pristine, set cycles-per-day, or inject test faults.")
-
-    P(doc, "What should I do? — the decision in four bullets:", bold=True)
-    bullet(doc, "All gauges green (Monitor) → keep running; check again next month.")
-    bullet(doc, "Any gauge amber or blue (Imminent / Schedule) → put that part on the maintenance calendar by its replace-by date.")
-    bullet(doc, "Any gauge red (Critical) or OVERDUE → order the part now and plan a stop.")
-    bullet(doc, "Banner reads FAILED → the press has stopped; replace the named part, then press Reset.")
-
-    # ---------- Visual design system ----------
-    H(doc, "12. Visual design system", 1)
-    P(doc, "Dark-mode-only industrial palette, defined once as CSS variables in "
-           "web/src/styles/tokens.css and mirrored into the shadcn theme.")
-    palette_table(doc, [
-        ("--color-bg",               "#0a0e16", "app background"),
-        ("--color-surface",          "#121826", "cards / panels"),
-        ("--color-surface-elevated", "#1b2433", "header, dialogs, hover"),
-        ("--color-border",           "#263043", "hairline borders"),
-        ("--color-text-primary",     "#e8edf4", "headings, key numbers"),
-        ("--color-text-secondary",   "#9babc4", "body, labels"),
-        ("--color-text-muted",       "#5f6e87", "captions, axis ticks"),
-        ("--color-accent",           "#38bdf8", "interactive chrome, focus"),
-        ("--color-success",          "#34d399", "healthy / good / monitor"),
-        ("--color-warning",          "#fbbf24", "attention / acceptable"),
-        ("--color-critical",         "#f4554e", "urgent / waste"),
-        ("--color-failed",           "#8a7374", "STOPPED — distinct grey-red"),
-    ])
-    P(doc, "Typography:", bold=True)
-    bullet(doc, "Inter (variable, self-hosted via Fontsource) for all UI text.")
-    bullet(doc, "JetBrains Mono (variable) for every number — cycle counter, health %, RUL cycles, dates — with tabular figures so digits don't jitter.")
-    bullet(doc, "Type scale only: text-xs 12 / sm 14 / base 16 / lg 18 / xl 20 / 2xl 24 / 3xl 30 — no arbitrary sizes.")
-    P(doc, "Spacing & hierarchy:", bold=True)
-    bullet(doc, "4 px spacing base; cards use a ~10 px corner radius and consistent internal padding.")
-    bullet(doc, "The most important thing (machine state, worst component) is largest and highest; less important panels are smaller and lower.")
-    bullet(doc, "Demo-only controls are collapsed and de-emphasized so a viewer never mistakes them for production features.")
-
-    # ---------- Failure behavior ----------
-    H(doc, "13. What happens when the machine fails", 1)
-    P(doc, "The simulator exposes a single top-level machine_state, derived from the worst "
-           "component's true (hidden) health and anchored on the existing health constants:")
-    bullet(doc, "health > 0.42 → running")
-    bullet(doc, "0.35 – 0.42 → warning (entering the resale sweet spot)")
-    bullet(doc, "0.20 – 0.35 → critical (past the sweet spot, approaching failure)")
-    bullet(doc, "≤ 0.20 → failed (latched)")
-    P(doc, "The moment any component crosses 0.20 the machine latches into FAILED and stays there "
-           "until Reset. While failed:")
-    bullet(doc, "Degradation freezes — health is pinned at its crossed value and never goes below 0.0.")
-    bullet(doc, "New cycles still stream, flagged failed=true in the snapshot.")
-    bullet(doc, "Quality is forced to WASTE (a serving-layer presentation override; the ML model is untouched).")
-    P(doc, "The UI then shows a red banner naming the failed component and the cycle at which it "
-           "crossed, a FAILED status badge, and a distinct 'stopped' gauge (lock icon, desaturated "
-           "grey-red ring, struck-through label) — so it reads as stopped, not merely bad.")
-    img(doc, "state_failed.png", "Failed state — banner, FAILED badge, STOPPED gauge, quality forced to WASTE")
-    P(doc, "Note the distinction: machine_state is ground truth from the simulator's hidden health, "
-           "whereas a gauge's urgency band is the ML model's days-based forecast. They answer "
-           "different questions — 'what condition is the press in now?' versus 'how soon should I "
-           "plan to replace this part?'")
-
-    # ---------- Replacement-date edge cases ----------
-    H(doc, "14. Replacement-date edge cases", 1)
-    P(doc, "Turning predicted cycles into calendar dates has three edge cases the UI handles "
-           "explicitly so a date never looks broken:")
-    bullet(doc, "Normal: a real date plus a day count (e.g. 'replace by 2026-06-05 · in 12 days').")
-    bullet(doc, "Already due (days ≤ 0) or a failed component: shows OVERDUE with a distinct red "
-                "style and no date — never 'replace on [yesterday]'.")
-    bullet(doc, "Far out (days > 365): shows '> 1 year' instead of a literal multi-year date, which "
-                "would be technically correct but unhelpful.")
-    P(doc, "Underpinning guarantees (unit-tested): the backend clamps predicted p50 RUL to ≥ 0 and "
-           "never emits a past date. At 4000 cycles/day, a fresh component with a 50,000-cycle p50 "
-           "RUL resolves to roughly 12.5 days out (2026-06-05, 12 whole days) — verified by "
-           "tests/test_urgency.py. A failed component's part is treated as OVERDUE.")
-
-    # ---------- Demonstration guide ----------
-    H(doc, "15. Demonstrating the prototype — the easy version", 1)
-    P(doc, "In one sentence: this dashboard watches an injection-molding machine and tells you, "
-           "component by component, how much life is left and exactly when to replace each part — "
-           "early enough to avoid a breakdown, late enough not to throw away good life.")
-    P(doc, "Run it:", bold=True)
-    code(doc,
-         "./demo.sh            # build if needed, then open http://localhost:8000\n"
-         "./demo.sh --tunnel   # same, plus a temporary public https link (Cloudflare)")
-    P(doc, "You don't need to memorise anything: hover any label, gauge, chart, or the small ⓘ "
-           "icons and the UI explains — in plain English — what it means and what to do.", bold=True)
-    P(doc, "A 60-second walkthrough:", bold=True)
-    bullet(doc, "1. Open the dashboard. The top badge reads RUNNING and the five gauges are "
-                "green/cyan — a healthy machine. Each gauge: the big number is health, the ring "
-                "colour is how urgently to replace, the small number is days left.")
-    bullet(doc, "2. Hover a gauge — it states the reading and the recommended action ('plenty of "
-                "life left', 'replace now', …). Hover any ⓘ to learn how to read that whole panel.")
-    bullet(doc, "3. Open 'Demo controls' (left), click 'Hydraulic Pump Wear', and drag 'Speed' up. "
-                "This simulates a failing hydraulic pump.")
-    bullet(doc, "4. Watch the story unfold live: the Hydraulic gauge falls, the status badge moves "
-                "RUNNING → WARNING → CRITICAL, the RUL forecast line drops toward the red failure "
-                "line, the process curves get noisy, and quality slides toward WASTE.")
-    bullet(doc, "5. Let it cross the line: a red 'MACHINE FAILED' banner names the part and the exact "
-                "cycle, and that gauge shows a STOPPED lock.")
-    bullet(doc, "6. Click 'Reset' — everything returns to 100% health and you can run the story again.")
-    P(doc, "That arc — healthy → predicted decline → failure → reset — is the entire value "
-           "proposition in about a minute.")
-
-    # ---------- Highlights ----------
-    H(doc, "16. Highlights — why it stands out", 1)
-    bullet(doc, "Per-component remaining-life predictions with honest uncertainty (p10/p50/p90) and "
-                "calibrated quality probabilities — not a single black-box number.")
-    bullet(doc, "Turns predictions into decisions: a calendar replacement date and a red/amber/cyan/"
-                "green urgency band per component, plus a single 'worst component — act first' callout.")
-    bullet(doc, "Leakage-proof by construction: the machine's hidden health is never a model input "
-                "(enforced by an AST lint test), validation never splits one machine across train/test "
-                "(GroupKFold), and prediction-interval coverage is gate-tested at ≥ 70%.")
-    bullet(doc, "Live end-to-end: simulator → 49 engineered features → ML → dashboard over a "
-                "WebSocket; inject a fault and the whole pipeline reacts within seconds.")
-    bullet(doc, "Swap-to-real ready: one DataSource interface means the same app runs on the "
-                "simulator or a real PLC by changing a single class.")
-    bullet(doc, "Defined failure behaviour: the machine latches FAILED at the threshold, freezes, "
-                "flags the cycle, and forces WASTE — with a one-click reset.")
-    bullet(doc, "Self-teaching UI: every control, gauge and chart explains itself on hover; designed "
-                "empty/loading/offline states; accessible keyboard focus.")
-    bullet(doc, "Optional interactive 3-D twin, and a one-command demo that can publish a temporary "
-                "public link via Cloudflare — clone, run, share.")
-
-    # ---------- Future work ----------
-    H(doc, "17. Future work", 1)
-    bullet(doc, "Bind live component health to the 3-D model's meshes (requires the model re-authored "
-                "with semantic node names) so the twin itself lights up where it hurts.")
-    bullet(doc, "Connect a real machine through the PLC DataSource and validate predictions against "
-                "real run-to-failure data.")
-    bullet(doc, "Drift / anomaly detection and alerting — e.g. notify when P(waste) > 0.3 for N "
-                "consecutive shots.")
-    bullet(doc, "Cost-aware replacement policy: weigh residual life, downtime cost and resale value to "
-                "recommend the optimal day, not just the urgency band.")
+    # ---------- 11. Roadmap ----------
+    H(doc, "11. Roadmap", 1)
+    bullet(doc, "Connect a real machine through the PLC DataSource (the snapshot contract is unchanged) "
+                "and validate predictions against run-to-failure data.")
+    bullet(doc, "Expert-refined component map per machine variant, versioned in the repo.")
+    bullet(doc, "Threshold overrides and per-machine configuration via the persisted config API.")
+    bullet(doc, "Cursor-level multiplayer review (presence) on top of the shareable-link sessions.")
     bullet(doc, "Fleet view across many machines, backed by a historian/database for trends and audit.")
-    bullet(doc, "Authentication and role-based access for a multi-user shop-floor deployment.")
-    bullet(doc, "Continuous retraining / online learning as real operating data accumulates.")
+    bullet(doc, "Authentication and a read-only reviewer role for remote investor / customer demos.")
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(OUT))
