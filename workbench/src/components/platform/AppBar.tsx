@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, Boxes, Gauge, RotateCcw, Settings, Wrench } from "lucide-react";
+import { Activity, Boxes, Gauge, Lock, RotateCcw, Settings, Wrench } from "lucide-react";
 import { useStore, type AppMode } from "@/store/store";
 import { getClient } from "@/data/useSnapshot";
 import type { MachineState } from "@/data/api";
@@ -41,6 +41,7 @@ function ModeSwitch(): React.JSX.Element {
 export function AppBar(): React.JSX.Element {
   const snapshot = useStore((s) => s.snapshot);
   const connected = useStore((s) => s.connected);
+  const readOnly = useStore((s) => s.readOnly);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [cpd, setCpd] = useState<number | null>(null);
@@ -106,16 +107,26 @@ export function AppBar(): React.JSX.Element {
           </div>
         </Explain>
 
-        <Explain side="bottom" bare title="Reset machine" what="Restore every component to 100%, clear faults, zero the counter.">
-          <button onClick={() => setResetOpen(true)} className="btn btn-icon" aria-label="Reset machine">
-            <RotateCcw className="h-4 w-4" />
-          </button>
-        </Explain>
-        <Explain side="bottom" bare title="Settings" what="Set production rate (cycles/day) used to turn predicted cycles into calendar dates.">
-          <button onClick={() => { setCpd(Math.round(cyclesPerDay)); setSettingsOpen(true); }} className="btn btn-icon" aria-label="Settings">
-            <Settings className="h-4 w-4" />
-          </button>
-        </Explain>
+        {readOnly ? (
+          <Explain side="bottom" title="Read-only review" what="A shared review link. Live monitoring is fully interactive; machine controls (reset, settings, fault injection) are disabled.">
+            <span className="flex items-center gap-1.5 rounded-full border border-panel-border bg-panel-inset px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+              <Lock className="h-3 w-3" /> Read-only
+            </span>
+          </Explain>
+        ) : (
+          <>
+            <Explain side="bottom" bare title="Reset machine" what="Restore every component to 100%, clear faults, zero the counter.">
+              <button onClick={() => setResetOpen(true)} className="btn btn-icon" aria-label="Reset machine">
+                <RotateCcw className="h-4 w-4" />
+              </button>
+            </Explain>
+            <Explain side="bottom" bare title="Settings" what="Set production rate (cycles/day) used to turn predicted cycles into calendar dates.">
+              <button onClick={() => { setCpd(Math.round(cyclesPerDay)); setSettingsOpen(true); }} className="btn btn-icon" aria-label="Settings">
+                <Settings className="h-4 w-4" />
+              </button>
+            </Explain>
+          </>
+        )}
       </div>
 
       <Modal

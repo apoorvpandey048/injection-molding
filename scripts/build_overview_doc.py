@@ -269,6 +269,13 @@ def main():
     code(doc, "https://<your-tunnel>.trycloudflare.com/#mode=operations&sub=Mold")
     P(doc, "Everyone streams the same live snapshots from the one backend; no extra infrastructure is "
            "required for a shared review session.")
+    P(doc, "For investor / customer demos, append &ro=1 for a read-only link: live monitoring stays "
+           "fully interactive, but machine controls (reset, settings, fault injection) are hidden so a "
+           "remote viewer can explore without disrupting the live machine. The presenter uses the plain "
+           "URL for full control. See docs/DGX_DEMO_CHECKLIST.md.")
+    img(doc, "23_readonly_review.png",
+        "Read-only review link (#…&ro=1) — a READ-ONLY badge replaces the machine controls; the link "
+        "opened straight into the Mold & Clamp context.")
 
     # ---------- 8. Responsive / visual design ----------
     H(doc, "8. Visual design", 1)

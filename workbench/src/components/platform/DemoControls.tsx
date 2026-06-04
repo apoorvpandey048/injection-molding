@@ -6,11 +6,15 @@ import { MONITORED, identityOf } from "@/lib/identity";
 import { Explain } from "@/ui/Explain";
 import { cn } from "@/lib/cn";
 
-export function DemoControls(): React.JSX.Element {
+export function DemoControls(): React.JSX.Element | null {
   const snapshot = useStore((s) => s.snapshot);
+  const readOnly = useStore((s) => s.readOnly);
   const [open, setOpen] = useState(false);
   const [speed, setSpeed] = useState(1);
   const active = snapshot?.active_faults ?? [];
+
+  // Read-only review links cannot disrupt the live machine.
+  if (readOnly) return null;
 
   const toggleFault = (faultId: string) => {
     const isOn = active.includes(faultId);

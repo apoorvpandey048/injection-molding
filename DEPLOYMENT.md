@@ -183,6 +183,10 @@ cd injection-molding
   `PORT=9000 ./demo.sh`.
 - **Shareable view:** append `#mode=operations&sub=Mold` (or any subsystem) to the
   URL to drop a viewer straight into a specific subsystem's context (D-09).
+- **Read-only investor link:** add `&ro=1` (e.g. `#mode=operations&sub=Mold&ro=1`) —
+  a 🔒 READ-ONLY badge shows and reset / settings / fault-injection are hidden, so a
+  remote viewer can explore but cannot disrupt the live machine. The presenter uses
+  the plain URL for full control. See `docs/DGX_DEMO_CHECKLIST.md`.
 - **Committed for determinism:** trained models (`artifacts/models/*.pkl`, D-13), the
   component map (`public/map/…`), default config (`config/platform.json`), the model
   + textures. First run does one-time venv setup only.

@@ -57,6 +57,7 @@ function useHotkeys() {
 
 function FailureBanner(): React.JSX.Element | null {
   const snapshot = useStore((s) => s.snapshot);
+  const readOnly = useStore((s) => s.readOnly);
   if (snapshot?.machine_state !== "failed") return null;
   const f = snapshot.failure;
   return (
@@ -70,7 +71,9 @@ function FailureBanner(): React.JSX.Element | null {
           <> — a component crossed the failure threshold. Reset to continue.</>
         )}
       </span>
-      <button onClick={() => void getClient().reset()} className="btn btn-active ml-auto">Reset machine</button>
+      {!readOnly && (
+        <button onClick={() => void getClient().reset()} className="btn btn-active ml-auto">Reset machine</button>
+      )}
     </div>
   );
 }

@@ -49,7 +49,9 @@ legacy dashboard.
 > **Reading the platform:** every gauge, chart point, sensor, control, and the
 > small ⓘ icons explain themselves on hover — what they mean and what to do.
 > Share a link with `#mode=operations&sub=Mold` to reproduce a colleague's exact
-> view for a remote review session.
+> view; append `&ro=1` for a **read-only** investor link (live monitoring stays
+> interactive; reset/settings/fault controls are hidden). See the
+> [DGX demo checklist](docs/DGX_DEMO_CHECKLIST.md).
 
 ## What's inside
 

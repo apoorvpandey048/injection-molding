@@ -35,6 +35,11 @@ These are the figures embedded in `docs/PROTOTYPE_OVERVIEW.docx`.
 | [19_inspection_xray](19_inspection_xray.png) | X-ray view |
 | [20_inspection_isolate](20_inspection_isolate.png) | Isolation — only the selection shown |
 
+## Collaboration
+| File | What it shows |
+|------|----------------|
+| [23_readonly_review](23_readonly_review.png) | Read-only investor link (#…&ro=1) — controls hidden, monitoring live |
+
 ## Layout
 | File | What it shows |
 |------|----------------|

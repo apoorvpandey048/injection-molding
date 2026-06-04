@@ -64,6 +64,9 @@ export interface PlatformState {
   // ---- app mode + active context ----
   mode: AppMode;
   setMode: (m: AppMode) => void;
+  /** Read-only reviewer mode (shared investor links): hides machine controls. */
+  readOnly: boolean;
+  setReadOnly: (b: boolean) => void;
   selectedSubsystem: Subsystem | null;
   hoveredSubsystem: Subsystem | null;
   selectSubsystem: (sub: Subsystem | null) => void;
@@ -193,6 +196,8 @@ export const useStore = create<PlatformState>((set, get) => {
           ? { mode: m, isolated: null, selection: new Set<string>(), hovered: null, activeNodeId: null }
           : { mode: m };
       }),
+    readOnly: false,
+    setReadOnly: (b) => set({ readOnly: b }),
     selectedSubsystem: null,
     hoveredSubsystem: null,
     selectSubsystem: (sub) => {
