@@ -58,6 +58,14 @@ The tunnel URL is **temporary** (regenerated each launch). Keep this terminal op
 - Set **Speed ×1** for a calm live view between fault demos.
 
 ## 5. Troubleshooting
+- **RUL shows "—" everywhere and Predicted Quality is UNKNOWN:** the ML models can't
+  be loaded by this machine's scikit-learn (the committed models are trained with
+  1.8.x). Retrain once in the local env:
+  ```bash
+  rm -f artifacts/models/*.pkl && ./demo.sh --tunnel   # trains ~few min, then serves
+  ```
+  After it restarts, dates / urgency / quality populate. Confirm the cause with:
+  `grep -i "ML predict failed" /tmp/imm_demo.log`.
 - **Tunnel URL not printed:** check `cloudflared.log`; re-run `./demo.sh --tunnel`.
 - **Live badge shows Offline / cycles frozen:** restart the server (`Ctrl-C`, then
   `./demo.sh --tunnel`). A very long-running instance can stall the cycle thread;
