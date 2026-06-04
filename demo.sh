@@ -14,6 +14,10 @@ VENV=".venv"
 PY="$VENV/bin/python"
 PORT="${PORT:-8000}"
 TUNNEL="${TUNNEL:-0}"
+# Tunnel transport. "auto" tries QUIC/UDP first (lowest latency) and falls back to
+# http2/TCP if UDP is blocked — the most robust default across networks. Override
+# with TUNNEL_PROTOCOL=http2 on networks that block UDP, or =quic to force QUIC.
+TUNNEL_PROTOCOL="${TUNNEL_PROTOCOL:-auto}"
 for arg in "$@"; do
   case "$arg" in
     --tunnel) TUNNEL=1 ;;
@@ -95,25 +99,45 @@ if [ "$TUNNEL" = "1" ]; then
     sleep 0.5
   done
 
-  echo "==> Opening Cloudflare quick tunnel (temporary public URL)…"
+  echo "==> Opening Cloudflare quick tunnel (protocol: $TUNNEL_PROTOCOL)…"
   rm -f cloudflared.log
-  # --protocol http2 tunnels over TCP/443 instead of QUIC/UDP, which many
-  # networks (corporate firewalls, some clouds, sandboxes) block.
-  "$CFD" tunnel --no-autoupdate --protocol http2 --url "http://localhost:$PORT" >cloudflared.log 2>&1 &
+  "$CFD" tunnel --no-autoupdate --protocol "$TUNNEL_PROTOCOL" --url "http://localhost:$PORT" >cloudflared.log 2>&1 &
   TUNNEL_PID=$!
 
+  # Wait for the URL AND a registered edge connection — a printed URL alone does
+  # not mean the tunnel routes (that's the HTTP 530 trap).
   PUBLIC_URL=""
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 80); do
     PUBLIC_URL="$(grep -oE 'https://[a-z0-9.-]+\.trycloudflare\.com' cloudflared.log | head -1 || true)"
-    [ -n "$PUBLIC_URL" ] && break
+    if [ -n "$PUBLIC_URL" ] && grep -q "Registered tunnel connection" cloudflared.log; then
+      break
+    fi
     sleep 0.5
   done
 
+  # Verify the tunnel actually serves before telling anyone to share it.
+  TUNNEL_OK=""
+  if [ -n "$PUBLIC_URL" ]; then
+    for _ in $(seq 1 10); do
+      if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$PUBLIC_URL/")" = "200" ]; then
+        TUNNEL_OK=1; break
+      fi
+      sleep 1
+    done
+  fi
+
   echo ""
   echo "============================================================"
-  if [ -n "$PUBLIC_URL" ]; then
+  if [ -n "$PUBLIC_URL" ] && [ -n "$TUNNEL_OK" ]; then
     echo "  Public demo URL (share this — temporary):"
     echo "      $PUBLIC_URL"
+    echo "  Read-only investor link:"
+    echo "      $PUBLIC_URL/#mode=operations&sub=Mold&ro=1"
+  elif [ -n "$PUBLIC_URL" ]; then
+    echo "  Tunnel URL printed but NOT routing yet (edge returned non-200):"
+    echo "      $PUBLIC_URL"
+    echo "  If it stays down, retry with: TUNNEL_PROTOCOL=http2 ./demo.sh --tunnel"
+    echo "  (and check cloudflared.log for 'Registered tunnel connection')"
   else
     echo "  Tunnel URL not detected yet — check cloudflared.log"
   fi

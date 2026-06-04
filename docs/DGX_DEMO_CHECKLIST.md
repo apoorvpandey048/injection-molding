@@ -67,6 +67,18 @@ The tunnel URL is **temporary** (regenerated each launch). Keep this terminal op
   After it restarts, dates / urgency / quality populate. Confirm the cause with:
   `grep -i "ML predict failed" /tmp/imm_demo.log`.
 - **Tunnel URL not printed:** check `cloudflared.log`; re-run `./demo.sh --tunnel`.
+- **Public link opens but shows Cloudflare error 530 (origin unreachable):** the
+  tunnel printed a URL but never registered an edge connection (no
+  `Registered tunnel connection` line in `cloudflared.log`). `demo.sh` now uses
+  `TUNNEL_PROTOCOL=auto` (QUIC first, http2 fallback) and verifies the URL returns
+  200 before printing it as shareable, so this should not surface. If a network
+  blocks UDP, force TCP: `TUNNEL_PROTOCOL=http2 ./demo.sh --tunnel`. To put a fresh
+  tunnel in front of an already-running server without restarting it:
+  ```bash
+  pkill -9 -f 'cloudflared.*--url http://localhost:8000' 2>/dev/null; sleep 2
+  tmux new -d -s immtun "cloudflared tunnel --no-autoupdate --url http://localhost:8000 2>&1 | tee cloudflared.log"
+  ```
+  then read the URL from `cloudflared.log` once `Registered tunnel connection` appears.
 - **Live badge shows Offline / cycles frozen:** restart the server (`Ctrl-C`, then
   `./demo.sh --tunnel`). A very long-running instance can stall the cycle thread;
   a fresh start always resumes streaming.
